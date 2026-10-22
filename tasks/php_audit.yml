@@ -518,18 +518,34 @@
     label: "{{ item.item.0.namespace | default('unknown') }}/{{ item.item.0.name | default('unknown') }}"
   when: item.item is defined
 
+- name: Validate normalized container audit results
+  ansible.builtin.assert:
+    that:
+      - item is mapping
+    fail_msg: "Container audit result must be a mapping; runtime results cannot be classified."
+  loop: "{{ audit_container_results | default([]) }}"
+  loop_control:
+    label: "{{ item.runtime | default('unknown runtime') if item is mapping else 'invalid container result' }}"
+
+- name: Initialize fixed-version container results
+  ansible.builtin.set_fact:
+    audit_container_results_fixed: []
+
 - name: Apply fixed PHP release classification to container results
   ansible.builtin.set_fact:
-    audit_container_results: >-
-      {% set container = audit_container_results[item] %}
-      {% set version_number = container.php_version_number | default('') %}
-      {% set version_branch = version_number.split('.')[0:2] | join('.') %}
-      {% set version_fixed = version_branch in audit_php_fixed_versions and (version_number.split('.')[2] | int >= audit_php_fixed_versions[version_branch].split('.')[2] | int) %}
-      {{ audit_container_results[:item] + [container | combine({
-        'php_version_fixed': version_fixed,
-        'classification': 'FIXED VERSION' if version_fixed else container.classification
-      })] + audit_container_results[item + 1:] }}
-  loop: "{{ range(0, audit_container_results | default([]) | length) | list }}"
+    audit_container_results_fixed: "{{ audit_container_results_fixed | default([]) + [item | combine({
+      'php_version_fixed': ((item.php_version_number | default('')).split('.')[0:2] | join('.')) in audit_php_fixed_versions and ((item.php_version_number | default('')).split('.')[2] | int >= audit_php_fixed_versions[(item.php_version_number | default('')).split('.')[0:2] | join('.')].split('.')[2] | int),
+      'classification': ('FIXED VERSION' if (((item.php_version_number | default('')).split('.')[0:2] | join('.')) in audit_php_fixed_versions and ((item.php_version_number | default('')).split('.')[2] | int >= audit_php_fixed_versions[(item.php_version_number | default('')).split('.')[0:2] | join('.')].split('.')[2] | int)) else item['classification'])
+    })] }}"
+  loop: "{{ audit_container_results | default([]) }}"
+
+- name: Replace container audit results with fixed-version classifications
+  ansible.builtin.set_fact:
+    audit_container_results: "{{ audit_container_results_fixed | default([]) }}"
+
+- name: Clear temporary fixed-version container results
+  ansible.builtin.set_fact:
+    audit_container_results_fixed: []
 
 - name: Derive PHP installation evidence
   ansible.builtin.set_fact:
@@ -538,6 +554,9 @@
 - name: Derive PHP version and fixed release status
   ansible.builtin.set_fact:
     audit_php_version_number: "{{ (((audit_php_version.stdout_lines | default([]) | first) | default((audit_php_sapi_version.stdout_lines | default([]) | first) | default('', true), true)) | regex_replace('^PHP ', '') | regex_replace(' .*$', '') | regex_search('^[0-9]+\\.[0-9]+\\.[0-9]+')) | default('', true) }}"
+
+- name: Determine whether the host PHP version is fixed
+  ansible.builtin.set_fact:
     audit_php_version_fixed: "{{ (audit_php_version_number.split('.')[0:2] | join('.')) in audit_php_fixed_versions and (audit_php_version_number.split('.')[2] | int >= audit_php_fixed_versions[audit_php_version_number.split('.')[0:2] | join('.')].split('.')[2] | int) }}"
 
 - name: Build normalized per-host audit result
