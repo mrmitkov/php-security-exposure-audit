@@ -67,11 +67,12 @@ Il CSV include anche i percorsi contenenti file PHP, i deployment WAR e i docume
 - **NOT AFFECTED**: non sono stati rilevati eseguibili o pacchetti PHP e la discovery dei pacchetti è stata completata.
 - **NEEDS REVIEW**: PHP è stato rilevato ma il parametro non è determinabile, oppure l'inventario dei pacchetti è incompleto.
 - **MITIGATED**: PHP è stato rilevato e il valore CLI del parametro risulta `Off`.
+- **FIXED VERSION**: PHP è rilevato a una versione corretta o patch successiva della stessa serie.
 - **POTENTIALLY VULNERABLE**: PHP è stato rilevato e il valore CLI del parametro risulta `On`.
 
-Questi stati seguono una regola di esposizione basata sulle informazioni disponibili e non costituiscono una verifica definitiva delle CVE. Il materiale di advisory disponibile al progetto non specifica un intervallo verificabile di versioni vulnerabili o corrette; perciò il playbook non applica una soglia di versione e non determina la vulnerabilità sulla sola base della versione rilevata.
+Le versioni PHP dichiarate corrette sono **8.2.35, 8.3.36, 8.4.27 e 8.5.12**. Il report considera corrette anche le release patch successive nella stessa serie (rispettivamente 8.2, 8.3, 8.4 e 8.5) e assegna loro **FIXED VERSION**, indipendentemente dal valore CLI di `session.upload_progress.enabled`. La versione rilevata è quella CLI, salvo fallback ai binari CGI/FPM quando la CLI non è presente; il SAPI web può differire. La classificazione resta una valutazione di esposizione, non una verifica definitiva delle CVE.
 
-Il valore letto con `php -r` riguarda il SAPI CLI. PHP-FPM, CGI e mod_php possono usare file `php.ini` o configurazioni per-pool differenti: verificare il SAPI che serve effettivamente l'applicazione. Anche uno stato **MITIGATED** richiede questa verifica. La disattivazione del parametro è una mitigazione temporanea indicata dall'advisory e non sostituisce l'aggiornamento a una versione corretta.
+Il valore letto con `php -r` riguarda il SAPI CLI. PHP-FPM, CGI e mod_php possono usare file `php.ini` o configurazioni per-pool differenti: verificare il SAPI che serve effettivamente l'applicazione. Anche uno stato **MITIGATED** richiede questa verifica. La disattivazione del parametro è una mitigazione temporanea indicata dall'advisory e non sostituisce l'aggiornamento a una versione corretta. Le distribuzioni possono applicare backport senza cambiare la versione upstream: verificare gli advisory del vendor.
 
 Un host che esegue solo Tomcat/Java e non ha PHP non è interessato da queste specifiche vulnerabilità PHP. Tomcat, le porte web e i file WAR sono raccolti per fornire contesto e non rappresentano, da soli, indicatori di esposizione PHP.
 

@@ -69,14 +69,15 @@ Il CSV include anche i percorsi che contengono file PHP, i deployment WAR e i do
 
 ## Interpretazione della vulnerabilità
 
-L'advisory allegato riporta CVE-2026-109618 e CVE-2026-109619 e indica che le versioni PHP dalla 5 in avanti potrebbero essere interessate. Il materiale disponibile non specifica le versioni esatte vulnerabili o corrette. Per questo motivo la classificazione del report **non è una verifica definitiva della CVE**: segue la regola di esposizione richiesta e controlla il valore CLI di `session.upload_progress.enabled`.
+L'advisory allegato riporta CVE-2026-109618 e CVE-2026-109619 e indica che le versioni PHP dalla 5 in avanti potrebbero essere interessate. Le versioni dichiarate corrette sono **PHP 8.2.35, 8.3.36, 8.4.27 e 8.5.12**. Il report considera corretta anche una release patch successiva all'interno della stessa serie (8.2, 8.3, 8.4 o 8.5). Per queste versioni la classificazione è **FIXED VERSION**, indipendentemente dal valore di `session.upload_progress.enabled`. La versione rilevata è quella CLI, salvo fallback ai binari CGI/FPM quando la CLI non è presente; il SAPI web può differire. La valutazione non sostituisce la verifica degli advisory del vendor: le distribuzioni possono applicare backport senza cambiare la versione upstream mostrata da PHP.
 
 - **NOT AFFECTED**: nessun eseguibile/pacchetto PHP rilevato e discovery pacchetti completata.
 - **NEEDS REVIEW**: PHP rilevato ma il parametro non è determinabile, oppure l'inventario dei pacchetti è incompleto.
 - **MITIGATED**: PHP rilevato e il parametro CLI risulta `Off`.
+- **FIXED VERSION**: PHP rilevato a una versione corretta o patch successiva della stessa serie.
 - **POTENTIALLY VULNERABLE**: PHP rilevato e il parametro CLI risulta `On`.
 
-`php -r` legge il SAPI CLI; FPM, CGI e mod_php possono caricare file `php.ini` o configurazioni per-pool differenti. Un risultato `MITIGATED` deve essere verificato sul SAPI che serve l'applicazione. La disattivazione è una mitigazione temporanea riportata dall'advisory, non sostituisce l'aggiornamento a una versione corretta. L'audit raccoglie versioni e package name ma non applica una soglia di versione, perché l'advisory locale non fornisce un intervallo verificabile.
+`php -r` legge il SAPI CLI; FPM, CGI e mod_php possono caricare file `php.ini` o configurazioni per-pool differenti. Un risultato `MITIGATED` deve essere verificato sul SAPI che serve l'applicazione. La disattivazione è una mitigazione temporanea riportata dall'advisory, non sostituisce l'aggiornamento a una versione corretta. Per versioni installate tramite una distribuzione, verificare gli advisory del vendor: un backport di sicurezza può non essere riconoscibile dal numero di versione upstream.
 
 Un host con solo Tomcat/Java e senza PHP non è interessato da queste vulnerabilità specifiche di PHP. Tomcat, porte web e file WAR sono inventariati per contesto, ma non costituiscono da soli indicatori di esposizione PHP.
 

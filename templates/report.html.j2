@@ -33,6 +33,7 @@
     .potentially-vulnerable { background: #fee4e2; color: #912018; }
     .needs-review { background: #fff1cc; color: #7a4b00; }
     .mitigated { background: #dcfae6; color: #05603a; }
+    .fixed-version { background: #d1fadf; color: #05603a; }
     .not-affected { background: #e8eef5; color: #344054; }
     details { max-width: 24rem; }
     details ul { margin: .35rem 0; padding-left: 1.2rem; }
@@ -61,7 +62,7 @@
     </div>
   </header>
 
-  {% set stats = namespace(hosts=0, php=0, vulnerable=0, mitigated=0, review=0, unaffected=0, containers=0, container_vulnerable=0) %}
+  {% set stats = namespace(hosts=0, php=0, vulnerable=0, mitigated=0, fixed=0, review=0, unaffected=0, containers=0, container_vulnerable=0, container_fixed=0) %}
   {% for target in groups['all'] %}
     {% if hostvars[target].php_audit is defined %}
       {% set audit = hostvars[target].php_audit %}
@@ -69,11 +70,13 @@
       {% if audit.php_installed %}{% set stats.php = stats.php + 1 %}{% endif %}
       {% if audit.classification == 'POTENTIALLY VULNERABLE' %}{% set stats.vulnerable = stats.vulnerable + 1 %}{% endif %}
       {% if audit.classification == 'MITIGATED' %}{% set stats.mitigated = stats.mitigated + 1 %}{% endif %}
+      {% if audit.classification == 'FIXED VERSION' %}{% set stats.fixed = stats.fixed + 1 %}{% endif %}
       {% if audit.classification == 'NEEDS REVIEW' %}{% set stats.review = stats.review + 1 %}{% endif %}
       {% if audit.classification == 'NOT AFFECTED' %}{% set stats.unaffected = stats.unaffected + 1 %}{% endif %}
       {% for runtime in audit.container_results | default([]) %}
         {% set stats.containers = stats.containers + 1 %}
         {% if runtime.classification == 'POTENTIALLY VULNERABLE' %}{% set stats.container_vulnerable = stats.container_vulnerable + 1 %}{% endif %}
+        {% if runtime.classification == 'FIXED VERSION' %}{% set stats.container_fixed = stats.container_fixed + 1 %}{% endif %}
       {% endfor %}
     {% endif %}
   {% endfor %}
@@ -83,10 +86,12 @@
     <div class="card"><span>Host con PHP</span><strong>{{ stats.php }}</strong></div>
     <div class="card vulnerable"><span>Potenzialmente vulnerabili</span><strong>{{ stats.vulnerable }}</strong></div>
     <div class="card mitigated"><span>Mitigati</span><strong>{{ stats.mitigated }}</strong></div>
+    <div class="card fixed-version"><span>Versione corretta</span><strong>{{ stats.fixed }}</strong></div>
     <div class="card review"><span>Da verificare</span><strong>{{ stats.review }}</strong></div>
     <div class="card"><span>Senza PHP</span><strong>{{ stats.unaffected }}</strong></div>
     <div class="card"><span>Container ispezionati</span><strong>{{ stats.containers }}</strong></div>
     <div class="card vulnerable"><span>Container potenzialmente vulnerabili</span><strong>{{ stats.container_vulnerable }}</strong></div>
+    <div class="card fixed-version"><span>Container con versione corretta</span><strong>{{ stats.container_fixed }}</strong></div>
   </div>
 
   <div class="table-wrap">
@@ -190,11 +195,12 @@
   <section>
     <h2>Interpretazione e limiti</h2>
     <p>La classificazione è una valutazione di esposizione basata sulla presenza di PHP e sul valore di <code>session.upload_progress.enabled</code> letto dalla configurazione PHP CLI. Il valore del SAPI web (FPM/CGI/mod_php) può differire; verificare il valore effettivo dell'applicazione prima di concludere.</p>
-    <p>L'advisory disponibile segnala CVE-2026-109618 e CVE-2026-109619 e indica PHP 5+ come potenzialmente interessato, ma non elenca le versioni esatte interessate o corrette. <strong>“POTENTIALLY VULNERABLE” non equivale quindi a una conferma della CVE</strong>: verificare le versioni corrette del vendor e applicare gli aggiornamenti. La disattivazione dell'opzione è una mitigazione indicata dall'advisory, non sostituisce la patch.</p>
+    <p>Le versioni PHP dichiarate corrette sono <code>8.2.35</code>, <code>8.3.36</code>, <code>8.4.27</code> e <code>8.5.12</code>. La stessa classificazione si applica alle release patch successive della rispettiva serie (8.2, 8.3, 8.4 o 8.5). <strong>“FIXED VERSION”</strong> indica una versione pari o superiore alla soglia corretta della propria serie; per queste versioni il valore di <code>session.upload_progress.enabled</code> non modifica la classificazione. La versione rilevata è quella CLI, salvo fallback ai binari CGI/FPM quando la CLI non è presente; il SAPI web può differire. Le versioni precedenti restano valutate anche in base al parametro CLI, ma gli aggiornamenti dei vendor possono includere backport: verificare sempre gli advisory della distribuzione.</p>
     <ul>
       <li><strong>NOT AFFECTED:</strong> nessuna installazione PHP rilevata.</li>
       <li><strong>NEEDS REVIEW:</strong> PHP rilevato, ma il parametro non è stato determinato.</li>
       <li><strong>MITIGATED:</strong> PHP rilevato e parametro CLI disattivato.</li>
+      <li><strong>FIXED VERSION:</strong> PHP rilevato a una versione corretta o successiva della stessa serie.</li>
       <li><strong>POTENTIALLY VULNERABLE:</strong> PHP rilevato e parametro CLI attivo.</li>
     </ul>
     <p>Un host con solo Tomcat/Java e senza PHP non è interessato a queste vulnerabilità specifiche di PHP. La presenza di porte o file WAR non implica la presenza di PHP. Se non è possibile accedere a Docker o all'API Kubernetes, i container non ispezionati non vanno considerati “NOT AFFECTED”.</p>

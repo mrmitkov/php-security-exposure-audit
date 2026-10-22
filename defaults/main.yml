@@ -5,6 +5,11 @@ audit_scan_docker_containers: true
 audit_scan_podman_containers: true
 audit_scan_kubernetes_pods: true
 audit_scan_lxc_containers: true
+audit_php_fixed_versions:
+  "8.2": "8.2.35"
+  "8.3": "8.3.36"
+  "8.4": "8.4.27"
+  "8.5": "8.5.12"
 audit_php_scan_roots:
   - /usr
   - /home

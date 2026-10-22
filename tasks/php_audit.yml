@@ -235,6 +235,7 @@
       'runtime_id': item.item,
       'php_installed': ('PHP_PRESENT=1' in (item.stdout_lines | default([]))),
       'php_version': ((item.stdout_lines | default([]) | select('match', '^PHP ') | list | first) | default('not available')),
+      'php_version_number': item.stdout_lines | default([]) | select('match', '^PHP [0-9]+\\.[0-9]+\\.[0-9]+') | list | first | default('') | regex_replace('^PHP ', '') | regex_replace(' .*$', ''),
       'php_ini_setting': ((item.stdout_lines | default([]) | select('match', '^UPLOAD_PROGRESS=') | list | first | default('UPLOAD_PROGRESS=UNKNOWN')) | regex_replace('^UPLOAD_PROGRESS=', '') | upper),
       'classification': ('NOT AFFECTED' if 'PHP_PRESENT=1' not in (item.stdout_lines | default([])) and item.rc | default(1) == 0 else ('POTENTIALLY VULNERABLE' if 'UPLOAD_PROGRESS=ON' in (item.stdout_lines | default([])) else ('MITIGATED' if 'UPLOAD_PROGRESS=OFF' in (item.stdout_lines | default([])) else 'NEEDS REVIEW'))),
       'probe_error': (item.stderr | default(''))
@@ -291,6 +292,7 @@
       'runtime_id': item.item,
       'php_installed': ('PHP_PRESENT=1' in (item.stdout_lines | default([]))),
       'php_version': ((item.stdout_lines | default([]) | select('match', '^PHP ') | list | first) | default('not available')),
+      'php_version_number': item.stdout_lines | default([]) | select('match', '^PHP [0-9]+\\.[0-9]+\\.[0-9]+') | list | first | default('') | regex_replace('^PHP ', '') | regex_replace(' .*$', ''),
       'php_ini_setting': ((item.stdout_lines | default([]) | select('match', '^UPLOAD_PROGRESS=') | list | first | default('UPLOAD_PROGRESS=UNKNOWN')) | regex_replace('^UPLOAD_PROGRESS=', '') | upper),
       'classification': ('NOT AFFECTED' if 'PHP_PRESENT=1' not in (item.stdout_lines | default([])) and item.rc | default(1) == 0 else ('POTENTIALLY VULNERABLE' if 'UPLOAD_PROGRESS=ON' in (item.stdout_lines | default([])) else ('MITIGATED' if 'UPLOAD_PROGRESS=OFF' in (item.stdout_lines | default([])) else 'NEEDS REVIEW'))),
       'probe_error': (item.stderr | default(''))
@@ -352,6 +354,7 @@
       'runtime_id': item.item,
       'php_installed': ('PHP_PRESENT=1' in (item.stdout_lines | default([]))),
       'php_version': ((item.stdout_lines | default([]) | select('match', '^PHP ') | list | first) | default('not available')),
+      'php_version_number': item.stdout_lines | default([]) | select('match', '^PHP [0-9]+\\.[0-9]+\\.[0-9]+') | list | first | default('') | regex_replace('^PHP ', '') | regex_replace(' .*$', ''),
       'php_ini_setting': ((item.stdout_lines | default([]) | select('match', '^UPLOAD_PROGRESS=') | list | first | default('UPLOAD_PROGRESS=UNKNOWN')) | regex_replace('^UPLOAD_PROGRESS=', '') | upper),
       'classification': ('NOT AFFECTED' if 'PHP_PRESENT=1' not in (item.stdout_lines | default([])) and item.rc | default(1) == 0 else ('POTENTIALLY VULNERABLE' if 'UPLOAD_PROGRESS=ON' in (item.stdout_lines | default([])) else ('MITIGATED' if 'UPLOAD_PROGRESS=OFF' in (item.stdout_lines | default([])) else 'NEEDS REVIEW'))),
       'probe_error': (item.stderr | default(''))
@@ -418,6 +421,7 @@
       'runtime_id': item.item.split(',')[0],
       'php_installed': ('PHP_PRESENT=1' in (item.stdout_lines | default([]))),
       'php_version': ((item.stdout_lines | default([]) | select('match', '^PHP ') | list | first) | default('not available')),
+      'php_version_number': item.stdout_lines | default([]) | select('match', '^PHP [0-9]+\\.[0-9]+\\.[0-9]+') | list | first | default('') | regex_replace('^PHP ', '') | regex_replace(' .*$', ''),
       'php_ini_setting': ((item.stdout_lines | default([]) | select('match', '^UPLOAD_PROGRESS=') | list | first | default('UPLOAD_PROGRESS=UNKNOWN')) | regex_replace('^UPLOAD_PROGRESS=', '') | upper),
       'classification': ('NOT AFFECTED' if 'PHP_PRESENT=1' not in (item.stdout_lines | default([])) and item.rc | default(1) == 0 else ('POTENTIALLY VULNERABLE' if 'UPLOAD_PROGRESS=ON' in (item.stdout_lines | default([])) else ('MITIGATED' if 'UPLOAD_PROGRESS=OFF' in (item.stdout_lines | default([])) else 'NEEDS REVIEW'))),
       'probe_error': (item.stderr | default(''))
@@ -504,6 +508,7 @@
       'runtime_id': item.item.0.namespace ~ '/' ~ item.item.0.name ~ '/' ~ item.item.1,
       'php_installed': ('PHP_PRESENT=1' in (item.stdout_lines | default([]))),
       'php_version': ((item.stdout_lines | default([]) | select('match', '^PHP ') | list | first) | default('not available')),
+      'php_version_number': item.stdout_lines | default([]) | select('match', '^PHP [0-9]+\\.[0-9]+\\.[0-9]+') | list | first | default('') | regex_replace('^PHP ', '') | regex_replace(' .*$', ''),
       'php_ini_setting': ((item.stdout_lines | default([]) | select('match', '^UPLOAD_PROGRESS=') | list | first | default('UPLOAD_PROGRESS=UNKNOWN')) | regex_replace('^UPLOAD_PROGRESS=', '') | upper),
       'classification': ('NOT AFFECTED' if 'PHP_PRESENT=1' not in (item.stdout_lines | default([])) and item.rc | default(1) == 0 else ('POTENTIALLY VULNERABLE' if 'UPLOAD_PROGRESS=ON' in (item.stdout_lines | default([])) else ('MITIGATED' if 'UPLOAD_PROGRESS=OFF' in (item.stdout_lines | default([])) else 'NEEDS REVIEW'))),
       'probe_error': (item.stderr | default(''))
@@ -513,9 +518,27 @@
     label: "{{ item.item.0.namespace | default('unknown') }}/{{ item.item.0.name | default('unknown') }}"
   when: item.item is defined
 
+- name: Apply fixed PHP release classification to container results
+  ansible.builtin.set_fact:
+    audit_container_results: >-
+      {% set container = audit_container_results[item] %}
+      {% set version_number = container.php_version_number | default('') %}
+      {% set version_branch = version_number.split('.')[0:2] | join('.') %}
+      {% set version_fixed = version_branch in audit_php_fixed_versions and (version_number.split('.')[2] | int >= audit_php_fixed_versions[version_branch].split('.')[2] | int) %}
+      {{ audit_container_results[:item] + [container | combine({
+        'php_version_fixed': version_fixed,
+        'classification': 'FIXED VERSION' if version_fixed else container.classification
+      })] + audit_container_results[item + 1:] }}
+  loop: "{{ range(0, audit_container_results | default([]) | length) | list }}"
+
 - name: Derive PHP installation evidence
   ansible.builtin.set_fact:
     audit_php_detected: "{{ (audit_php_binary.rc | default(1) == 0) or ((audit_php_sapi_binaries.stdout_lines | default([]) | length) > 0) or ((audit_packages.stdout_lines | default([]) | select('match', '(?i)^(php|libphp)') | list | length) > 0) }}"
+
+- name: Derive PHP version and fixed release status
+  ansible.builtin.set_fact:
+    audit_php_version_number: "{{ (((audit_php_version.stdout_lines | default([]) | first) | default((audit_php_sapi_version.stdout_lines | default([]) | first) | default('', true), true)) | regex_replace('^PHP ', '') | regex_replace(' .*$', '') | regex_search('^[0-9]+\\.[0-9]+\\.[0-9]+')) | default('', true) }}"
+    audit_php_version_fixed: "{{ (audit_php_version_number.split('.')[0:2] | join('.')) in audit_php_fixed_versions and (audit_php_version_number.split('.')[2] | int >= audit_php_fixed_versions[audit_php_version_number.split('.')[0:2] | join('.')].split('.')[2] | int) }}"
 
 - name: Build normalized per-host audit result
   ansible.builtin.set_fact:
@@ -531,6 +554,8 @@
       php_installed: "{{ audit_php_detected }}"
       php_detection_status: "{{ 'detected' if audit_php_detected else ('not detected' if audit_packages.rc | default(1) == 0 else 'unknown: package discovery failed') }}"
       php_version: "{{ (audit_php_version.stdout_lines | default([]) | first) | default((audit_php_sapi_version.stdout_lines | default([]) | first) | default('not available', true), true) }}"
+      php_version_number: "{{ audit_php_version_number }}"
+      php_version_fixed: "{{ audit_php_version_fixed | bool }}"
       php_ini_setting_raw: "{{ audit_upload_progress.stdout | default('') | trim }}"
       php_ini_setting: "{{ (audit_upload_progress.stdout | default('UNKNOWN') | trim | upper) if (audit_upload_progress.stdout | default('UNKNOWN') | trim | upper) in ['ON', 'OFF'] else 'UNKNOWN' }}"
       php_ini_setting_error: "{{ audit_upload_progress.stderr | default('') }}"
@@ -569,4 +594,4 @@
       kubernetes_scan_status: "{{ 'disabled' if not (audit_scan_kubernetes_pods | bool) else ('completed' if audit_kubernetes_pods_raw.rc | default(1) == 0 else 'failed: ' ~ (audit_kubernetes_pods_raw.stderr | default('kubectl unavailable or access denied'))) }}"
       php_setting_collection_rc: "{{ audit_upload_progress.rc | default(-1) | int }}"
       package_discovery_error: "{{ audit_packages.stderr | default('') }}"
-      classification: "{{ 'NEEDS REVIEW' if not audit_php_detected and audit_packages.rc | default(1) != 0 else ('NOT AFFECTED' if not audit_php_detected else ('POTENTIALLY VULNERABLE' if ((audit_upload_progress.rc | default(1) == 0) and (audit_upload_progress.stdout | default('UNKNOWN') | trim | upper) == 'ON') else ('MITIGATED' if ((audit_upload_progress.rc | default(1) == 0) and (audit_upload_progress.stdout | default('UNKNOWN') | trim | upper) == 'OFF') else 'NEEDS REVIEW'))) }}"
+      classification: "{{ 'NEEDS REVIEW' if not audit_php_detected and audit_packages.rc | default(1) != 0 else ('NOT AFFECTED' if not audit_php_detected else ('FIXED VERSION' if audit_php_version_fixed | bool else ('POTENTIALLY VULNERABLE' if ((audit_upload_progress.rc | default(1) == 0) and (audit_upload_progress.stdout | default('UNKNOWN') | trim | upper) == 'ON') else ('MITIGATED' if ((audit_upload_progress.rc | default(1) == 0) and (audit_upload_progress.stdout | default('UNKNOWN') | trim | upper) == 'OFF') else 'NEEDS REVIEW')))) }}"
