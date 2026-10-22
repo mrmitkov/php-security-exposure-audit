@@ -73,7 +73,7 @@
 - name: Normalize discovered service names and running states
   ansible.builtin.set_fact:
     audit_service_names: "{{ audit_service_facts.ansible_facts.services | default({}) | dict2items | map(attribute='key') | list }}"
-    audit_running_service_names: "{{ audit_service_facts.ansible_facts.services | default({}) | dict2items | selectattr('value.state', 'equalto', 'running') | map(attribute='key') | list }}"
+    audit_running_service_names: "{{ audit_service_facts.ansible_facts.services | default({}) | dict2items | selectattr('value.state', 'match', '^running$') | map(attribute='key') | list }}"
 
 - name: Discover installed Tomcat paths
   ansible.builtin.shell: |
@@ -451,7 +451,7 @@
       'namespace': item.split('\t')[0],
       'name': item.split('\t')[1],
       'phase': item.split('\t')[2],
-      'containers': (item.split('\t')[3].split(',') | reject('equalto', '') | list)
+      'containers': (item.split('\t')[3].split(',') | reject('match', '^$') | list)
       } ] }}"
   loop: "{{ audit_kubernetes_pods_raw.stdout_lines | default([]) }}"
   loop_control:

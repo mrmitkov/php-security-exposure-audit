@@ -62,36 +62,55 @@
     </div>
   </header>
 
-  {% set stats = namespace(hosts=0, php=0, vulnerable=0, mitigated=0, fixed=0, review=0, unaffected=0, containers=0, container_vulnerable=0, container_fixed=0) %}
+  {% set audits = [] %}
+  {% set php_hosts = [] %}
+  {% set vulnerable_hosts = [] %}
+  {% set mitigated_hosts = [] %}
+  {% set fixed_hosts = [] %}
+  {% set review_hosts = [] %}
+  {% set unaffected_hosts = [] %}
+  {% set container_entries = [] %}
+  {% set vulnerable_containers = [] %}
+  {% set fixed_containers = [] %}
+  {% set docker_entries = [] %}
+  {% set podman_entries = [] %}
+  {% set lxc_entries = [] %}
+  {% set kubernetes_entries = [] %}
   {% for target in groups['all'] %}
     {% if hostvars[target].php_audit is defined %}
       {% set audit = hostvars[target].php_audit %}
-      {% set stats.hosts = stats.hosts + 1 %}
-      {% if audit.php_installed %}{% set stats.php = stats.php + 1 %}{% endif %}
-      {% if audit.classification == 'POTENTIALLY VULNERABLE' %}{% set stats.vulnerable = stats.vulnerable + 1 %}{% endif %}
-      {% if audit.classification == 'MITIGATED' %}{% set stats.mitigated = stats.mitigated + 1 %}{% endif %}
-      {% if audit.classification == 'FIXED VERSION' %}{% set stats.fixed = stats.fixed + 1 %}{% endif %}
-      {% if audit.classification == 'NEEDS REVIEW' %}{% set stats.review = stats.review + 1 %}{% endif %}
-      {% if audit.classification == 'NOT AFFECTED' %}{% set stats.unaffected = stats.unaffected + 1 %}{% endif %}
-      {% for runtime in audit.container_results | default([]) %}
-        {% set stats.containers = stats.containers + 1 %}
-        {% if runtime.classification == 'POTENTIALLY VULNERABLE' %}{% set stats.container_vulnerable = stats.container_vulnerable + 1 %}{% endif %}
-        {% if runtime.classification == 'FIXED VERSION' %}{% set stats.container_fixed = stats.container_fixed + 1 %}{% endif %}
+      {% set _ = audits.append(audit) %}
+      {% if audit.php_installed %}{% set _ = php_hosts.append(audit) %}{% endif %}
+      {% if audit.classification == 'POTENTIALLY VULNERABLE' %}{% set _ = vulnerable_hosts.append(audit) %}{% endif %}
+      {% if audit.classification == 'MITIGATED' %}{% set _ = mitigated_hosts.append(audit) %}{% endif %}
+      {% if audit.classification == 'FIXED VERSION' %}{% set _ = fixed_hosts.append(audit) %}{% endif %}
+      {% if audit.classification == 'NEEDS REVIEW' %}{% set _ = review_hosts.append(audit) %}{% endif %}
+      {% if audit.classification == 'NOT AFFECTED' %}{% set _ = unaffected_hosts.append(audit) %}{% endif %}
+      {% for result in audit.container_results | default([]) %}
+        {% set entry = {'host': audit.hostname | default(target), 'result': result} %}
+        {% set _ = container_entries.append(entry) %}
+        {% if result.classification == 'POTENTIALLY VULNERABLE' %}{% set _ = vulnerable_containers.append(entry) %}{% endif %}
+        {% if result.classification == 'FIXED VERSION' %}{% set _ = fixed_containers.append(entry) %}{% endif %}
+        {% if result.runtime == 'docker' %}{% set _ = docker_entries.append(entry) %}
+        {% elif result.runtime == 'podman' %}{% set _ = podman_entries.append(entry) %}
+        {% elif result.runtime in ['lxc', 'lxd'] %}{% set _ = lxc_entries.append(entry) %}
+        {% elif result.runtime == 'kubernetes' %}{% set _ = kubernetes_entries.append(entry) %}
+        {% endif %}
       {% endfor %}
     {% endif %}
   {% endfor %}
 
   <div class="summary" aria-label="Audit summary">
-    <div class="card"><span>Host analizzati</span><strong>{{ stats.hosts }}</strong></div>
-    <div class="card"><span>Host con PHP</span><strong>{{ stats.php }}</strong></div>
-    <div class="card vulnerable"><span>Potenzialmente vulnerabili</span><strong>{{ stats.vulnerable }}</strong></div>
-    <div class="card mitigated"><span>Mitigati</span><strong>{{ stats.mitigated }}</strong></div>
-    <div class="card fixed-version"><span>Versione corretta</span><strong>{{ stats.fixed }}</strong></div>
-    <div class="card review"><span>Da verificare</span><strong>{{ stats.review }}</strong></div>
-    <div class="card"><span>Senza PHP</span><strong>{{ stats.unaffected }}</strong></div>
-    <div class="card"><span>Container ispezionati</span><strong>{{ stats.containers }}</strong></div>
-    <div class="card vulnerable"><span>Container potenzialmente vulnerabili</span><strong>{{ stats.container_vulnerable }}</strong></div>
-    <div class="card fixed-version"><span>Container con versione corretta</span><strong>{{ stats.container_fixed }}</strong></div>
+    <div class="card"><span>Host analizzati</span><strong>{{ audits | length }}</strong></div>
+    <div class="card"><span>Host con PHP</span><strong>{{ php_hosts | length }}</strong></div>
+    <div class="card vulnerable"><span>Potenzialmente vulnerabili</span><strong>{{ vulnerable_hosts | length }}</strong></div>
+    <div class="card mitigated"><span>Mitigati</span><strong>{{ mitigated_hosts | length }}</strong></div>
+    <div class="card fixed-version"><span>Versione corretta</span><strong>{{ fixed_hosts | length }}</strong></div>
+    <div class="card review"><span>Da verificare</span><strong>{{ review_hosts | length }}</strong></div>
+    <div class="card"><span>Senza PHP</span><strong>{{ unaffected_hosts | length }}</strong></div>
+    <div class="card"><span>Container ispezionati</span><strong>{{ container_entries | length }}</strong></div>
+    <div class="card vulnerable"><span>Container potenzialmente vulnerabili</span><strong>{{ vulnerable_containers | length }}</strong></div>
+    <div class="card fixed-version"><span>Container con versione corretta</span><strong>{{ fixed_containers | length }}</strong></div>
   </div>
 
   <div class="table-wrap">
@@ -147,20 +166,6 @@
     </table>
   </div>
 
-  {% set runtime_groups = namespace(docker=[], podman=[], lxc=[], kubernetes=[]) %}
-  {% for target in groups['all'] %}
-    {% if hostvars[target].php_audit is defined %}
-      {% for result in hostvars[target].php_audit.container_results | default([]) %}
-        {% set entry = {'host': hostvars[target].php_audit.hostname | default(target), 'result': result} %}
-        {% if result.runtime == 'docker' %}{% set _ = runtime_groups.docker.append(entry) %}
-        {% elif result.runtime == 'podman' %}{% set _ = runtime_groups.podman.append(entry) %}
-        {% elif result.runtime in ['lxc', 'lxd'] %}{% set _ = runtime_groups.lxc.append(entry) %}
-        {% elif result.runtime == 'kubernetes' %}{% set _ = runtime_groups.kubernetes.append(entry) %}
-        {% endif %}
-      {% endfor %}
-    {% endif %}
-  {% endfor %}
-
   {% macro runtime_table(title, entries) %}
     {% if entries %}
       <section>
@@ -187,10 +192,10 @@
     {% endif %}
   {% endmacro %}
 
-  {{ runtime_table('Container Docker', runtime_groups.docker) }}
-  {{ runtime_table('Container Podman', runtime_groups.podman) }}
-  {{ runtime_table('Container LXC/LXD', runtime_groups.lxc) }}
-  {{ runtime_table('Container Kubernetes', runtime_groups.kubernetes) }}
+  {{ runtime_table('Container Docker', docker_entries) }}
+  {{ runtime_table('Container Podman', podman_entries) }}
+  {{ runtime_table('Container LXC/LXD', lxc_entries) }}
+  {{ runtime_table('Container Kubernetes', kubernetes_entries) }}
 
   <section>
     <h2>Interpretazione e limiti</h2>
