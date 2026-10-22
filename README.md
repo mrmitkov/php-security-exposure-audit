@@ -11,6 +11,8 @@ Playbook Ansible in sola lettura per censire host Linux e valutare la mitigazion
 
 Il playbook non installa, modifica o riavvia software sui target. Usa privilege escalation per leggere dati e percorrere i percorsi richiesti; i task di raccolta sono marcati `changed_when: false`. Per lo stato dei servizi usa `ansible.builtin.service_facts`, compatibile con systemd, SysV, Upstart e OpenRC, invece di interrogare direttamente `systemctl`; il rilevamento dei processi resta come fallback per istanze non gestite dal service manager. La creazione dei report avviene solo sul nodo di controllo.
 
+Nei metadati Galaxy, `platforms` elenca le release OS supportate, indipendentemente dal fatto che siano eseguite su bare metal, VM o container. I runtime container sono indicizzati separatamente con i tag `docker`, `lxc`, `lxd`, `kubernetes` e `containers`; non rappresentano ulteriori versioni di distribuzione.
+
 ## Struttura
 
 ```text

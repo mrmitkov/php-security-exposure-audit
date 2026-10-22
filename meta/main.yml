@@ -9,6 +9,7 @@ galaxy_info:
       versions:
         - "11"
         - "12"
+        - "13"
     - name: Ubuntu
       versions:
         - "20.04"
@@ -39,5 +40,11 @@ galaxy_info:
       versions:
         - "12"
         - "15"
+  galaxy_tags:
+    - containers
+    - docker
+    - lxc
+    - lxd
+    - kubernetes
 
 dependencies: []
