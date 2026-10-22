@@ -563,6 +563,7 @@
   ansible.builtin.set_fact:
     php_audit:
       inventory_hostname: "{{ inventory_hostname }}"
+      audit_timestamp: "{{ ansible_date_time.iso8601 | default('unknown') }}"
       hostname: "{{ ansible_hostname | default(inventory_hostname) }}"
       fqdn: "{{ ansible_fqdn | default('unknown') }}"
       ip_addresses: "{{ ansible_all_ipv4_addresses | default([]) }}"

@@ -15,6 +15,39 @@
     label: "{{ item }}"
   when: hostvars[item].php_audit is defined
 
+- name: Check for previous per-host JSON reports
+  ansible.builtin.stat:
+    path: "{{ audit_output_dir }}/{{ item | regex_replace('[^A-Za-z0-9_.-]', '_') }}.json"
+    get_checksum: false
+  register: audit_previous_json_stats
+  loop: "{{ groups['all'] }}"
+  loop_control:
+    label: "{{ item }}"
+  when: audit_use_previous_results | bool
+
+- name: Initialize consolidated host audit data
+  ansible.builtin.set_fact:
+    audit_report_hosts: []
+
+- name: Add current scan results to consolidated data
+  ansible.builtin.set_fact:
+    audit_report_hosts: "{{ audit_report_hosts + [hostvars[item].php_audit | combine({'audit_data_source': 'scansione corrente', 'audit_data_timestamp': (hostvars[item].php_audit.audit_timestamp | default('unknown'))})] }}"
+  loop: "{{ groups['all'] }}"
+  loop_control:
+    label: "{{ item }}"
+  when: hostvars[item].php_audit is defined
+
+- name: Add previous results for hosts missing from the current scan
+  ansible.builtin.set_fact:
+    audit_report_hosts: "{{ audit_report_hosts + [(lookup('file', item.stat.path) | from_json | combine({'audit_data_source': 'scansione precedente', 'audit_data_timestamp': ('%Y-%m-%d %H:%M:%S' | strftime(item.stat.mtime | int))}))] }}"
+  loop: "{{ audit_previous_json_stats.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - audit_use_previous_results | bool
+    - item.stat.exists | default(false)
+    - hostvars[item.item].php_audit is not defined
+
 - name: Generate consolidated CSV report
   ansible.builtin.template:
     src: templates/report.csv.j2

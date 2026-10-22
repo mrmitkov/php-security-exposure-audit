@@ -65,6 +65,12 @@ Per ogni host raggiunto viene scritto `reports/<inventory-host>.json`. I report 
 - `reports/php_security_audit.html`
 - `reports/php_security_audit.pdf`
 
+Se un host dell'inventory corrente non produce un risultato e il relativo JSON esiste già, il report consolidato riutilizza quel risultato precedente (abilitato per impostazione predefinita). Il report HTML e il CSV marcano chiaramente l'origine e la data del dato; l'HTML mostra inoltre un avviso con gli host ripresi da una scansione precedente. Questi risultati possono essere obsoleti e vanno verificati prima di considerarli rappresentativi dello stato corrente. Per disabilitare il recupero:
+
+```sh
+ansible-playbook -i inventory/hosts.ini site.yml -e audit_use_previous_results=false
+```
+
 Il CSV include anche i percorsi che contengono file PHP, i deployment WAR e i document root individuati. L'HTML contiene tabelle ordinabili, riepilogo e legenda dei risultati. La sezione container include le sonde Docker, Podman, LXC/LXD e Kubernetes quando i runtime e i permessi sono disponibili.
 
 ## Interpretazione della vulnerabilità

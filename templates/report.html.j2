@@ -35,6 +35,7 @@
     .mitigated { background: #dcfae6; color: #05603a; }
     .fixed-version { background: #d1fadf; color: #05603a; }
     .not-affected { background: #e8eef5; color: #344054; }
+    .stale-data { border-color: #f0b429; background: #fffaeb; }
     details { max-width: 24rem; }
     details ul { margin: .35rem 0; padding-left: 1.2rem; }
     section { margin-top: 1.2rem; line-height: 1.5; }
@@ -63,6 +64,7 @@
   </header>
 
   {% set audits = [] %}
+  {% set stale_audits = [] %}
   {% set php_hosts = [] %}
   {% set vulnerable_hosts = [] %}
   {% set mitigated_hosts = [] %}
@@ -76,10 +78,9 @@
   {% set podman_entries = [] %}
   {% set lxc_entries = [] %}
   {% set kubernetes_entries = [] %}
-  {% for target in groups['all'] %}
-    {% if hostvars[target].php_audit is defined %}
-      {% set audit = hostvars[target].php_audit %}
+  {% for audit in audit_report_hosts | default([]) %}
       {% set _ = audits.append(audit) %}
+      {% if audit.audit_data_source == 'scansione precedente' %}{% set _ = stale_audits.append(audit) %}{% endif %}
       {% if audit.php_installed %}{% set _ = php_hosts.append(audit) %}{% endif %}
       {% if audit.classification == 'POTENTIALLY VULNERABLE' %}{% set _ = vulnerable_hosts.append(audit) %}{% endif %}
       {% if audit.classification == 'MITIGATED' %}{% set _ = mitigated_hosts.append(audit) %}{% endif %}
@@ -87,7 +88,7 @@
       {% if audit.classification == 'NEEDS REVIEW' %}{% set _ = review_hosts.append(audit) %}{% endif %}
       {% if audit.classification == 'NOT AFFECTED' %}{% set _ = unaffected_hosts.append(audit) %}{% endif %}
       {% for result in audit.container_results | default([]) %}
-        {% set entry = {'host': audit.hostname | default(target), 'result': result} %}
+        {% set entry = {'host': audit.hostname | default(audit.inventory_hostname), 'result': result} %}
         {% set _ = container_entries.append(entry) %}
         {% if result.classification == 'POTENTIALLY VULNERABLE' %}{% set _ = vulnerable_containers.append(entry) %}{% endif %}
         {% if result.classification == 'FIXED VERSION' %}{% set _ = fixed_containers.append(entry) %}{% endif %}
@@ -97,7 +98,6 @@
         {% elif result.runtime == 'kubernetes' %}{% set _ = kubernetes_entries.append(entry) %}
         {% endif %}
       {% endfor %}
-    {% endif %}
   {% endfor %}
 
   <div class="summary" aria-label="Audit summary">
@@ -113,21 +113,28 @@
     <div class="card fixed-version"><span>Container con versione corretta</span><strong>{{ fixed_containers | length }}</strong></div>
   </div>
 
+  {% if stale_audits %}
+    <section class="stale-data">
+      <h2>Risultati recuperati da scansioni precedenti</h2>
+      <p>Questi dati non sono stati aggiornati nella scansione corrente. Verificare l'età e lo stato degli host prima di usare il report come fotografia attuale.</p>
+      <ul>{% for audit in stale_audits %}<li>{{ audit.inventory_hostname | default(audit.hostname) | e }} — JSON del {{ audit.audit_data_timestamp | default('data non disponibile') | e }}</li>{% endfor %}</ul>
+    </section>
+  {% endif %}
+
   <div class="table-wrap">
     <table id="audit-table">
       <thead>
         <tr>
-          {% for heading in ['Host', 'FQDN', 'IP', 'Sistema operativo', 'Kernel / uptime', 'PHP', 'PHP-FPM', 'PHP-CGI', 'Upload progress', 'Apache', 'Nginx', 'Tomcat', 'WebSphere', 'Porte TCP', 'File PHP', 'File WAR', 'Document root', 'Docker / pod', 'Stato Docker', 'Podman', 'Stato Podman', 'LXC classic/LXD', 'Stato LXC classic', 'Stato LXD', 'Stato Kubernetes', 'Classificazione'] %}
+          {% for heading in ['Host', 'Origine dati', 'FQDN', 'IP', 'Sistema operativo', 'Kernel / uptime', 'PHP', 'PHP-FPM', 'PHP-CGI', 'Upload progress', 'Apache', 'Nginx', 'Tomcat', 'WebSphere', 'Porte TCP', 'File PHP', 'File WAR', 'Document root', 'Docker / pod', 'Stato Docker', 'Podman', 'Stato Podman', 'LXC classic/LXD', 'Stato LXC classic', 'Stato LXD', 'Stato Kubernetes', 'Classificazione'] %}
             <th><button type="button" onclick="sortAuditTable({{ loop.index0 }})">{{ heading }}</button></th>
           {% endfor %}
         </tr>
       </thead>
       <tbody>
-        {% for target in groups['all'] %}
-          {% if hostvars[target].php_audit is defined %}
-            {% set audit = hostvars[target].php_audit %}
-            <tr>
-              <td>{{ audit.hostname | default(target) | e }}</td>
+        {% for audit in audit_report_hosts | default([]) %}
+          <tr>
+              <td>{{ audit.hostname | default(audit.inventory_hostname) | e }}</td>
+              <td>{{ audit.audit_data_source | default('scansione corrente') | e }}{% if audit.audit_data_timestamp is defined %}<br><span class="muted">{{ audit.audit_data_timestamp | e }}</span>{% endif %}</td>
               <td>{{ audit.fqdn | default('unknown') | e }}</td>
               <td>{{ audit.ip_addresses | default([]) | join(', ') | e }}</td>
               <td>{{ audit.operating_system | default('unknown') | e }}</td>
@@ -159,8 +166,7 @@
               <td>{{ audit.lxd_scan_status | default('unknown') | e }}</td>
               <td>{{ audit.kubernetes_scan_status | default('unknown') | e }}</td>
               <td><span class="badge {{ audit.classification | lower | replace(' ', '-') | e }}">{{ audit.classification | e }}</span></td>
-            </tr>
-          {% endif %}
+          </tr>
         {% endfor %}
       </tbody>
     </table>

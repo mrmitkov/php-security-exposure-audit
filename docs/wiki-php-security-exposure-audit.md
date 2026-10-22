@@ -62,6 +62,8 @@ Per ogni host raggiunto viene generato un report JSON. I risultati consolidati s
 
 Il CSV include anche i percorsi contenenti file PHP, i deployment WAR e i document root rilevati. I report possono contenere nomi host, percorsi e dettagli dell'infrastruttura: conservarli e condividerli secondo le policy di sicurezza della propria organizzazione.
 
+Se un host dell'inventory corrente non ha prodotto dati nella scansione e il suo JSON di una scansione precedente è presente nella directory dei report, i report consolidati riutilizzano quei dati per impostazione predefinita. HTML e CSV indicano la fonte e la data; l'HTML evidenzia gli host con dati precedenti. Questi risultati potrebbero essere obsoleti e non vanno considerati una fotografia aggiornata. Per disattivare il recupero, eseguire il playbook con `-e audit_use_previous_results=false`.
+
 ## Interpretazione dei risultati
 
 - **NOT AFFECTED**: non sono stati rilevati eseguibili o pacchetti PHP e la discovery dei pacchetti è stata completata.

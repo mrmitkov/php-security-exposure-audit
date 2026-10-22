@@ -1,6 +1,8 @@
 ---
 - name: Audit PHP security exposure
   hosts: all
+  strategy: free
+  ignore_unreachable: true
   become: true
   gather_facts: true
   vars_files:
