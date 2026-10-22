@@ -2,7 +2,8 @@
 *.retry
 # AI context locale
 .ai-context/
-docs/
+docs/*
+!docs/wiki-php-security-exposure-audit.md
 
 # Python
 *.pyc
