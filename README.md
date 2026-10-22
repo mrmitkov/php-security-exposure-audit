@@ -11,7 +11,7 @@ Playbook Ansible in sola lettura per censire host Linux e valutare la mitigazion
 
 Il playbook non installa, modifica o riavvia software sui target. Usa privilege escalation per leggere dati e percorrere i percorsi richiesti; i task di raccolta sono marcati `changed_when: false`. Per lo stato dei servizi usa `ansible.builtin.service_facts`, compatibile con systemd, SysV, Upstart e OpenRC, invece di interrogare direttamente `systemctl`; il rilevamento dei processi resta come fallback per istanze non gestite dal service manager. La creazione dei report avviene solo sul nodo di controllo.
 
-Nei metadati Galaxy, `platforms` elenca le release OS supportate, indipendentemente dal fatto che siano eseguite su bare metal, VM o container. I runtime container sono indicizzati separatamente con i tag `docker`, `lxc`, `lxd`, `kubernetes` e `containers`; non rappresentano ulteriori versioni di distribuzione.
+Nei metadati Galaxy, `platforms` elenca le release OS supportate, indipendentemente dal fatto che siano eseguite su bare metal, VM o container. I runtime container sono indicizzati separatamente con i tag `docker`, `podman`, `lxc`, `lxd`, `kubernetes` e `containers`; non rappresentano ulteriori versioni di distribuzione.
 
 ## Struttura
 
@@ -65,7 +65,7 @@ Per ogni host raggiunto viene scritto `reports/<inventory-host>.json`. I report 
 - `reports/php_security_audit.html`
 - `reports/php_security_audit.pdf`
 
-Il CSV include anche i percorsi che contengono file PHP, i deployment WAR e i document root individuati. L'HTML contiene tabelle ordinabili, riepilogo e legenda dei risultati. La sezione container include le sonde Docker, LXC/LXD e Kubernetes quando i runtime e i permessi sono disponibili.
+Il CSV include anche i percorsi che contengono file PHP, i deployment WAR e i document root individuati. L'HTML contiene tabelle ordinabili, riepilogo e legenda dei risultati. La sezione container include le sonde Docker, Podman, LXC/LXD e Kubernetes quando i runtime e i permessi sono disponibili.
 
 ## Interpretazione della vulnerabilità
 
@@ -94,8 +94,8 @@ find /usr /home /var/www /srv /opt -type f -name '*.php' 2>/dev/null
 
 Controllare inoltre i file `php.ini`, le directory `conf.d`, la configurazione del pool FPM e i virtual host del server web. Dopo aver installato un aggiornamento del vendor, verificare nuovamente la versione dal package manager e consultare l'advisory ufficiale PHP e quella del sistema operativo per la corrispondenza della CVE.
 
-## Contenitori: Docker, LXC/LXD e Kubernetes
+## Contenitori: Docker, Podman, LXC/LXD e Kubernetes
 
-Per impostazione predefinita il playbook tenta la lettura dei container Docker in esecuzione, dei container LXC classic attivi (`lxc-ls`/`lxc-attach`), delle istanze LXD in stato `RUNNING` (`lxc list`/`lxc exec`) e dei container nei pod Kubernetes in stato `Running`. Le sonde avviano soltanto processi temporanei `sh`, `php -v` e `php -r` nei container; non modificano immagini o filesystem. Docker e LXC classic/LXD devono essere accessibili all'utente remoto con privilege escalation; `kubectl` viene eseguito come utente SSH e deve avere un contesto autorizzato con permessi di lettura dei pod e `pods/exec`. Gli errori di accesso o l'assenza di una shell sono riportati come risultati da verificare, non come “non vulnerabile”. È possibile disabilitare una sonda con `-e audit_scan_docker_containers=false`, `-e audit_scan_lxc_containers=false` o `-e audit_scan_kubernetes_pods=false`.
+Per impostazione predefinita il playbook tenta la lettura dei container in esecuzione gestiti da Docker e Podman rootful, dei container LXC classic attivi (`lxc-ls`/`lxc-attach`), delle istanze LXD in stato `RUNNING` (`lxc list`/`lxc exec`) e dei container nei pod Kubernetes in stato `Running`. Le sonde avviano soltanto processi temporanei `sh`, `php -v` e `php -r` nei container; non modificano immagini o filesystem. Docker, Podman rootful e LXC classic/LXD devono essere accessibili all'utente remoto con privilege escalation; `kubectl` viene eseguito come utente SSH e deve avere un contesto autorizzato con permessi di lettura dei pod e `pods/exec`. La scansione Podman usa il contesto rootful e non include i container rootless dei singoli utenti. Gli errori di accesso o l'assenza di una shell sono riportati come risultati da verificare, non come “non vulnerabile”. È possibile disabilitare una sonda con `-e audit_scan_docker_containers=false`, `-e audit_scan_podman_containers=false`, `-e audit_scan_lxc_containers=false` o `-e audit_scan_kubernetes_pods=false`.
 
 Le scansioni dei container sono limitate alle istanze in esecuzione e il valore PHP è quello del SAPI CLI nel container; non sostituisce una verifica del SAPI web. Per cluster o ambienti con molti container, considerare tempi e autorizzazioni prima di abilitare le sonde.

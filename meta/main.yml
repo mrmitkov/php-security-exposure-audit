@@ -43,6 +43,7 @@ galaxy_info:
   galaxy_tags:
     - containers
     - docker
+    - podman
     - lxc
     - lxd
     - kubernetes

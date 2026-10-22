@@ -244,6 +244,62 @@
     label: "{{ item.item | default('unknown container') }}"
   when: item.item is defined
 
+- name: List running Podman containers
+  ansible.builtin.command: podman ps --quiet
+  register: audit_podman_containers
+  changed_when: false
+  failed_when: false
+  when: audit_scan_podman_containers | bool
+
+- name: Probe PHP inside each running Podman container
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - "{{ item }}"
+      - sh
+      - -c
+      - >-
+        if command -v php >/dev/null 2>&1; then
+          printf 'PHP_PRESENT=1\n';
+          php -v 2>/dev/null | head -n 1;
+          setting=$(php -r '$v = ini_get("session.upload_progress.enabled"); if ($v === false) { echo "UNKNOWN"; } else { echo in_array(strtolower((string) $v), array("1", "on", "yes", "true"), true) ? "ON" : "OFF"; }' 2>/dev/null) || setting=UNKNOWN;
+          printf 'UPLOAD_PROGRESS=%s\n' "$setting";
+        elif command -v php-cgi >/dev/null 2>&1 || command -v php-fpm >/dev/null 2>&1 || command -v php-fpm8.5 >/dev/null 2>&1 || command -v php-fpm8.4 >/dev/null 2>&1 || command -v php-fpm8.3 >/dev/null 2>&1 || command -v php-fpm8.2 >/dev/null 2>&1 || command -v php-fpm8.1 >/dev/null 2>&1 || command -v php-fpm8.0 >/dev/null 2>&1 || command -v php-fpm7.4 >/dev/null 2>&1 || command -v php-fpm7.3 >/dev/null 2>&1 || command -v php-fpm7.2 >/dev/null 2>&1 || command -v php-fpm7.1 >/dev/null 2>&1 || command -v php-fpm7.0 >/dev/null 2>&1 || command -v php-fpm5.6 >/dev/null 2>&1; then
+          printf 'PHP_PRESENT=1\n';
+          for candidate in php-cgi php-fpm php-fpm8.5 php-fpm8.4 php-fpm8.3 php-fpm8.2 php-fpm8.1 php-fpm8.0 php-fpm7.4 php-fpm7.3 php-fpm7.2 php-fpm7.1 php-fpm7.0 php-fpm5.6; do
+            if command -v "$candidate" >/dev/null 2>&1; then "$candidate" -v 2>/dev/null | head -n 1; break; fi
+          done
+          printf 'UPLOAD_PROGRESS=UNKNOWN\n';
+        else
+          printf 'PHP_PRESENT=0\n';
+        fi
+  register: audit_podman_php_probes
+  changed_when: false
+  failed_when: false
+  loop: "{{ audit_podman_containers.stdout_lines | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - audit_scan_podman_containers | bool
+    - audit_podman_containers.rc | default(1) == 0
+
+- name: Normalize Podman container audit results
+  ansible.builtin.set_fact:
+    audit_container_results: "{{ audit_container_results | default([]) + [ {
+      'runtime': 'podman',
+      'runtime_id': item.item,
+      'php_installed': ('PHP_PRESENT=1' in (item.stdout_lines | default([]))),
+      'php_version': ((item.stdout_lines | default([]) | select('match', '^PHP ') | list | first) | default('not available')),
+      'php_ini_setting': ((item.stdout_lines | default([]) | select('match', '^UPLOAD_PROGRESS=') | list | first | default('UPLOAD_PROGRESS=UNKNOWN')) | regex_replace('^UPLOAD_PROGRESS=', '') | upper),
+      'classification': ('NOT AFFECTED' if 'PHP_PRESENT=1' not in (item.stdout_lines | default([])) and item.rc | default(1) == 0 else ('POTENTIALLY VULNERABLE' if 'UPLOAD_PROGRESS=ON' in (item.stdout_lines | default([])) else ('MITIGATED' if 'UPLOAD_PROGRESS=OFF' in (item.stdout_lines | default([])) else 'NEEDS REVIEW'))),
+      'probe_error': (item.stderr | default(''))
+      } ] }}"
+  loop: "{{ audit_podman_php_probes.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item | default('unknown Podman container') }}"
+  when: item.item is defined
+
 - name: List running classic LXC containers
   ansible.builtin.command:
     argv:
@@ -502,12 +558,14 @@
       document_roots_found: "{{ audit_document_roots_found.stdout_lines | default([]) }}"
       container_results: "{{ audit_container_results | default([]) }}"
       docker_running_container_count: "{{ audit_docker_containers.stdout_lines | default([]) | length }}"
+      podman_running_container_count: "{{ audit_podman_containers.stdout_lines | default([]) | length }}"
       lxc_classic_running_container_count: "{{ audit_lxc_classic_containers.stdout_lines | default([]) | length }}"
       lxd_running_container_count: "{{ (audit_lxd_containers.stdout_lines | default([]) | select('search', ',RUNNING$') | list | length) }}"
       kubernetes_pod_count: "{{ audit_kubernetes_pods | default([]) | length }}"
       lxc_classic_scan_status: "{{ 'disabled' if not (audit_scan_lxc_containers | bool) else ('completed' if audit_lxc_classic_containers.rc | default(1) == 0 else 'unavailable or access denied') }}"
       lxd_scan_status: "{{ 'disabled' if not (audit_scan_lxc_containers | bool) else ('completed' if audit_lxd_containers.rc | default(1) == 0 else 'unavailable or access denied') }}"
       docker_scan_status: "{{ 'disabled' if not (audit_scan_docker_containers | bool) else ('completed' if audit_docker_containers.rc | default(1) == 0 else 'failed: ' ~ (audit_docker_containers.stderr | default('runtime unavailable'))) }}"
+      podman_scan_status: "{{ 'disabled' if not (audit_scan_podman_containers | bool) else ('completed' if audit_podman_containers.rc | default(1) == 0 else 'failed: ' ~ (audit_podman_containers.stderr | default('runtime unavailable'))) }}"
       kubernetes_scan_status: "{{ 'disabled' if not (audit_scan_kubernetes_pods | bool) else ('completed' if audit_kubernetes_pods_raw.rc | default(1) == 0 else 'failed: ' ~ (audit_kubernetes_pods_raw.stderr | default('kubectl unavailable or access denied'))) }}"
       php_setting_collection_rc: "{{ audit_upload_progress.rc | default(-1) | int }}"
       package_discovery_error: "{{ audit_packages.stderr | default('') }}"

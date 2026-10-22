@@ -93,7 +93,7 @@
     <table id="audit-table">
       <thead>
         <tr>
-          {% for heading in ['Host', 'FQDN', 'IP', 'Sistema operativo', 'Kernel / uptime', 'PHP', 'PHP-FPM', 'PHP-CGI', 'Upload progress', 'Apache', 'Nginx', 'Tomcat', 'WebSphere', 'Porte TCP', 'File PHP', 'File WAR', 'Document root', 'Docker / pod', 'Stato Docker', 'LXC classic/LXD', 'Stato LXC classic', 'Stato LXD', 'Stato Kubernetes', 'Classificazione'] %}
+          {% for heading in ['Host', 'FQDN', 'IP', 'Sistema operativo', 'Kernel / uptime', 'PHP', 'PHP-FPM', 'PHP-CGI', 'Upload progress', 'Apache', 'Nginx', 'Tomcat', 'WebSphere', 'Porte TCP', 'File PHP', 'File WAR', 'Document root', 'Docker / pod', 'Stato Docker', 'Podman', 'Stato Podman', 'LXC classic/LXD', 'Stato LXC classic', 'Stato LXD', 'Stato Kubernetes', 'Classificazione'] %}
             <th><button type="button" onclick="sortAuditTable({{ loop.index0 }})">{{ heading }}</button></th>
           {% endfor %}
         </tr>
@@ -128,6 +128,8 @@
               </td>
               <td>{{ audit.docker_running_container_count | default(0) }} container / {{ audit.kubernetes_pod_count | default(0) }} pod</td>
               <td>{{ audit.docker_scan_status | default('unknown') | e }}</td>
+              <td>{{ audit.podman_running_container_count | default(0) }} container rootful</td>
+              <td>{{ audit.podman_scan_status | default('unknown') | e }}</td>
               <td>{{ audit.lxc_classic_running_container_count | default(0) }} classic / {{ audit.lxd_running_container_count | default(0) }} LXD</td>
               <td>{{ audit.lxc_classic_scan_status | default('unknown') | e }}</td>
               <td>{{ audit.lxd_scan_status | default('unknown') | e }}</td>
@@ -140,31 +142,50 @@
     </table>
   </div>
 
-  <section>
-    <h2>Container Docker, LXC/LXD e pod Kubernetes</h2>
-    <p>Il playbook tenta una verifica read-only dei container in esecuzione nei runtime Docker, LXC classic, LXD e Kubernetes. La sonda avvia un processo temporaneo nel container per leggere versione PHP e impostazione CLI; i container senza shell o senza autorizzazione risultano da verificare. Lo stato delle scansioni è incluso nei report JSON e CSV.</p>
-    <div class="table-wrap">
-      <table id="runtime-table">
-        <thead><tr><th>Host</th><th>Runtime / identificativo</th><th>PHP</th><th>Upload progress</th><th>Classificazione</th><th>Errore sonda</th></tr></thead>
-        <tbody>
-          {% for target in groups['all'] %}
-            {% if hostvars[target].php_audit is defined %}
-              {% for runtime in hostvars[target].php_audit.container_results | default([]) %}
+  {% set runtime_groups = namespace(docker=[], podman=[], lxc=[], kubernetes=[]) %}
+  {% for target in groups['all'] %}
+    {% if hostvars[target].php_audit is defined %}
+      {% for result in hostvars[target].php_audit.container_results | default([]) %}
+        {% set entry = {'host': hostvars[target].php_audit.hostname | default(target), 'result': result} %}
+        {% if result.runtime == 'docker' %}{% set _ = runtime_groups.docker.append(entry) %}
+        {% elif result.runtime == 'podman' %}{% set _ = runtime_groups.podman.append(entry) %}
+        {% elif result.runtime in ['lxc', 'lxd'] %}{% set _ = runtime_groups.lxc.append(entry) %}
+        {% elif result.runtime == 'kubernetes' %}{% set _ = runtime_groups.kubernetes.append(entry) %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+  {% endfor %}
+
+  {% macro runtime_table(title, entries) %}
+    {% if entries %}
+      <section>
+        <h2>{{ title }}</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Host</th><th>Runtime / identificativo</th><th>PHP</th><th>Upload progress</th><th>Classificazione</th><th>Errore sonda</th></tr></thead>
+            <tbody>
+              {% for entry in entries %}
+                {% set result = entry.result %}
                 <tr>
-                  <td>{{ hostvars[target].php_audit.hostname | e }}</td>
-                  <td>{{ runtime.runtime | e }} / {{ runtime.runtime_id | e }}</td>
-                  <td>{{ runtime.php_version | default('No PHP / non disponibile') | e }}</td>
-                  <td>{{ runtime.php_ini_setting | default('UNKNOWN') | e }}</td>
-                  <td><span class="badge {{ runtime.classification | lower | replace(' ', '-') | e }}">{{ runtime.classification | e }}</span></td>
-                  <td>{{ runtime.probe_error | default('') | e }}</td>
+                  <td>{{ entry.host | e }}</td>
+                  <td>{{ result.runtime | e }} / {{ result.runtime_id | e }}</td>
+                  <td>{{ result.php_version | default('No PHP / non disponibile') | e }}</td>
+                  <td>{{ result.php_ini_setting | default('UNKNOWN') | e }}</td>
+                  <td><span class="badge {{ result.classification | lower | replace(' ', '-') | e }}">{{ result.classification | e }}</span></td>
+                  <td>{{ result.probe_error | default('') | e }}</td>
                 </tr>
               {% endfor %}
-            {% endif %}
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+  {% endmacro %}
+
+  {{ runtime_table('Container Docker', runtime_groups.docker) }}
+  {{ runtime_table('Container Podman', runtime_groups.podman) }}
+  {{ runtime_table('Container LXC/LXD', runtime_groups.lxc) }}
+  {{ runtime_table('Container Kubernetes', runtime_groups.kubernetes) }}
 
   <section>
     <h2>Interpretazione e limiti</h2>

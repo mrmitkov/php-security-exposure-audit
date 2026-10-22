@@ -14,9 +14,9 @@ Il playbook raccoglie informazioni su:
 - file PHP e percorsi che li contengono;
 - servizi e processi correlati;
 - document root, deployment WAR e informazioni di contesto sui server web;
-- container Docker, LXC/LXD e pod Kubernetes in esecuzione, se le sonde sono abilitate e accessibili.
+- container Docker e Podman rootful, LXC/LXD e pod Kubernetes in esecuzione, se le sonde sono abilitate e accessibili.
 
-Le sonde nei container avviano solo comandi temporanei di lettura. Non modificano immagini o filesystem. Il rilevamento nei container è limitato alle istanze in esecuzione.
+Le sonde nei container avviano solo comandi temporanei di lettura. Non modificano immagini o filesystem. Il rilevamento nei container è limitato alle istanze in esecuzione. La sonda Podman usa il contesto rootful e non rileva i container rootless dei singoli utenti.
 
 ## Requisiti
 
@@ -50,7 +50,7 @@ Se `wkhtmltopdf` non è disponibile, è possibile disabilitare la generazione PD
 ansible-playbook -i inventory/hosts.ini site.yml -e audit_generate_pdf=false --ask-become-pass
 ```
 
-Le sonde container possono essere disabilitate singolarmente con `audit_scan_docker_containers`, `audit_scan_lxc_containers` e `audit_scan_kubernetes_pods`. Le directory di scansione e la destinazione dei report sono configurabili in `defaults/main.yml`.
+Le sonde container possono essere disabilitate singolarmente con `audit_scan_docker_containers`, `audit_scan_podman_containers`, `audit_scan_lxc_containers` e `audit_scan_kubernetes_pods`. Le directory di scansione e la destinazione dei report sono configurabili in `defaults/main.yml`.
 
 ## Report
 
