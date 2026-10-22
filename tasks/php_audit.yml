@@ -1,0 +1,514 @@
+---
+- name: Locate the PHP CLI executable
+  ansible.builtin.shell: command -v php
+  args:
+    executable: /bin/sh
+  register: audit_php_binary
+  changed_when: false
+  failed_when: false
+
+- name: Read PHP CLI version
+  ansible.builtin.command: php -v
+  register: audit_php_version
+  changed_when: false
+  failed_when: false
+  when: audit_php_binary.rc == 0
+
+- name: Read upload progress setting from PHP CLI
+  ansible.builtin.command:
+    argv:
+      - php
+      - -r
+      - '$v = ini_get("session.upload_progress.enabled"); if ($v === false) { echo "UNKNOWN"; } else { echo in_array(strtolower((string) $v), array("1", "on", "yes", "true"), true) ? "ON" : "OFF"; }'
+  register: audit_upload_progress
+  changed_when: false
+  failed_when: false
+  when: audit_php_binary.rc == 0
+
+- name: Discover PHP CGI and FPM executables
+  ansible.builtin.shell: |
+    for candidate in php-cgi php-fpm php-fpm8.5 php-fpm8.4 php-fpm8.3 php-fpm8.2 php-fpm8.1 php-fpm8.0 php-fpm7.4 php-fpm7.3 php-fpm7.2 php-fpm7.1 php-fpm7.0 php-fpm5.6; do
+      command -v "$candidate" 2>/dev/null || true
+    done
+  args:
+    executable: /bin/sh
+  register: audit_php_sapi_binaries
+  changed_when: false
+  failed_when: false
+
+- name: Read PHP version from CGI or FPM when the CLI is absent
+  ansible.builtin.command:
+    argv:
+      - "{{ audit_php_sapi_binaries.stdout_lines | first }}"
+      - -v
+  register: audit_php_sapi_version
+  changed_when: false
+  failed_when: false
+  when:
+    - audit_php_binary.rc != 0
+    - audit_php_sapi_binaries.stdout_lines | default([]) | length > 0
+
+- name: Discover installed PHP and web application packages
+  ansible.builtin.shell: |
+    if command -v rpm >/dev/null 2>&1; then
+      packages=$(rpm -qa --qf '%{NAME}\n' 2>/dev/null) || exit 1
+    elif command -v dpkg-query >/dev/null 2>&1; then
+      packages=$(dpkg-query -W -f='${binary:Package}\n' 2>/dev/null) || exit 1
+    else
+      printf 'Neither rpm nor dpkg-query is available\n' >&2
+      exit 127
+    fi
+    printf '%s\n' "$packages" | awk 'tolower($0) ~ /^(php|libphp|apache2|httpd|nginx|tomcat|websphere)/'
+  args:
+    executable: /bin/sh
+  register: audit_packages
+  changed_when: false
+  failed_when: false
+
+- name: Gather service facts
+  ansible.builtin.service_facts:
+  register: audit_service_facts
+  changed_when: false
+
+- name: Normalize discovered service names and running states
+  ansible.builtin.set_fact:
+    audit_service_names: "{{ audit_service_facts.ansible_facts.services | default({}) | dict2items | map(attribute='key') | list }}"
+    audit_running_service_names: "{{ audit_service_facts.ansible_facts.services | default({}) | dict2items | selectattr('value.state', 'equalto', 'running') | map(attribute='key') | list }}"
+
+- name: Discover installed Tomcat paths
+  ansible.builtin.shell: |
+    for path in /opt/tomcat /usr/local/tomcat /usr/share/tomcat /var/lib/tomcat /opt/apache-tomcat*; do
+      if [ -e "$path" ]; then
+        printf '%s\n' "$path"
+      fi
+    done
+  args:
+    executable: /bin/sh
+  register: audit_tomcat_paths
+  changed_when: false
+  failed_when: false
+
+- name: Discover Apache and Nginx executables
+  ansible.builtin.shell: |
+    for executable in apache2 httpd apachectl apache2ctl nginx; do
+      command -v "$executable" 2>/dev/null || true
+    done
+  args:
+    executable: /bin/sh
+  register: audit_web_server_binaries
+  changed_when: false
+  failed_when: false
+
+- name: Discover active web server processes
+  ansible.builtin.shell: |
+    ps -eo args= 2>/dev/null | awk '
+      /[n]ginx: master process/ { print "active:nginx" }
+      /[h]ttpd|[a]pache2/ { print "active:apache" }
+      /[o]rg\.apache\.catalina\.startup\.Bootstrap|[o]rg\.apache\.catalina\.startup\.Tomcat/ { print "active:tomcat" }
+      /[c]om\.ibm\.ws\.runtime\.WsServer|[c]om\.ibm\.ws\.kernel\.boot\.Launcher/ { print "active:websphere" }
+    ' | sort -u
+  args:
+    executable: /bin/sh
+  register: audit_process_probe
+  changed_when: false
+  failed_when: false
+
+- name: Discover IBM WebSphere installation paths
+  ansible.builtin.shell: |
+    for path in /opt/IBM/WebSphere /usr/IBM/WebSphere /usr/local/IBM/WebSphere /opt/IBM/HTTPServer; do
+      if [ -e "$path" ]; then
+        printf '%s\n' "$path"
+      fi
+    done
+  args:
+    executable: /bin/sh
+  register: audit_websphere_paths
+  changed_when: false
+  failed_when: false
+
+- name: Discover listening TCP web ports
+  ansible.builtin.shell: |
+    if command -v ss >/dev/null 2>&1; then
+      ss -ltnH 2>/dev/null | awk '{print $4}'
+    elif command -v netstat >/dev/null 2>&1; then
+      netstat -lnt 2>/dev/null | awk 'NR > 2 {print $4}'
+    fi | awk -F: '$NF == "80" || $NF == "443" || $NF == "8080" || $NF == "8443" {print $NF}' | sort -u
+  args:
+    executable: /bin/sh
+  register: audit_listening_ports
+  changed_when: false
+  failed_when: false
+
+- name: Count PHP application files in configured scan roots
+  ansible.builtin.shell: |
+    find {{ audit_php_scan_roots | map('quote') | join(' ') }} -type f -iname '*.php' -printf '.' 2>/dev/null | wc -c
+  args:
+    executable: /bin/sh
+  register: audit_php_file_count
+  changed_when: false
+  failed_when: false
+
+- name: Find directories containing PHP files
+  ansible.builtin.shell: |
+    find {{ audit_php_scan_roots | map('quote') | join(' ') }} -type f -iname '*.php' -printf '%h\n' 2>/dev/null | sort -u
+  args:
+    executable: /bin/sh
+  register: audit_php_directories
+  changed_when: false
+  failed_when: false
+
+- name: Count WAR deployment archives
+  ansible.builtin.shell: |
+    find {{ audit_war_scan_roots | map('quote') | join(' ') }} -type f -iname '*.war' -printf '.' 2>/dev/null | wc -c
+  args:
+    executable: /bin/sh
+  register: audit_war_count
+  changed_when: false
+  failed_when: false
+
+- name: Find WAR deployment directories
+  ansible.builtin.shell: |
+    find {{ audit_war_scan_roots | map('quote') | join(' ') }} -type f -iname '*.war' -printf '%h\n' 2>/dev/null | sort -u
+  args:
+    executable: /bin/sh
+  register: audit_war_directories
+  changed_when: false
+  failed_when: false
+
+- name: Find existing document roots
+  ansible.builtin.shell: |
+    for path in {{ audit_document_roots | map('quote') | join(' ') }}; do
+      if [ -d "$path" ]; then
+        printf '%s\n' "$path"
+      fi
+    done
+  args:
+    executable: /bin/sh
+  register: audit_document_roots_found
+  changed_when: false
+  failed_when: false
+
+- name: List running Docker containers
+  ansible.builtin.command: docker ps --quiet
+  register: audit_docker_containers
+  changed_when: false
+  failed_when: false
+  when: audit_scan_docker_containers | bool
+
+- name: Probe PHP inside each running Docker container
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ item }}"
+      - sh
+      - -c
+      - >-
+        if command -v php >/dev/null 2>&1; then
+          printf 'PHP_PRESENT=1\n';
+          php -v 2>/dev/null | head -n 1;
+          setting=$(php -r '$v = ini_get("session.upload_progress.enabled"); if ($v === false) { echo "UNKNOWN"; } else { echo in_array(strtolower((string) $v), array("1", "on", "yes", "true"), true) ? "ON" : "OFF"; }' 2>/dev/null) || setting=UNKNOWN;
+          printf 'UPLOAD_PROGRESS=%s\n' "$setting";
+        elif command -v php-cgi >/dev/null 2>&1 || command -v php-fpm >/dev/null 2>&1 || command -v php-fpm8.5 >/dev/null 2>&1 || command -v php-fpm8.4 >/dev/null 2>&1 || command -v php-fpm8.3 >/dev/null 2>&1 || command -v php-fpm8.2 >/dev/null 2>&1 || command -v php-fpm8.1 >/dev/null 2>&1 || command -v php-fpm8.0 >/dev/null 2>&1 || command -v php-fpm7.4 >/dev/null 2>&1 || command -v php-fpm7.3 >/dev/null 2>&1 || command -v php-fpm7.2 >/dev/null 2>&1 || command -v php-fpm7.1 >/dev/null 2>&1 || command -v php-fpm7.0 >/dev/null 2>&1 || command -v php-fpm5.6 >/dev/null 2>&1; then
+          printf 'PHP_PRESENT=1\n';
+          for candidate in php-cgi php-fpm php-fpm8.5 php-fpm8.4 php-fpm8.3 php-fpm8.2 php-fpm8.1 php-fpm8.0 php-fpm7.4 php-fpm7.3 php-fpm7.2 php-fpm7.1 php-fpm7.0 php-fpm5.6; do
+            if command -v "$candidate" >/dev/null 2>&1; then "$candidate" -v 2>/dev/null | head -n 1; break; fi
+          done
+          printf 'UPLOAD_PROGRESS=UNKNOWN\n';
+        else
+          printf 'PHP_PRESENT=0\n';
+        fi
+  register: audit_docker_php_probes
+  changed_when: false
+  failed_when: false
+  loop: "{{ audit_docker_containers.stdout_lines | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - audit_scan_docker_containers | bool
+    - audit_docker_containers.rc | default(1) == 0
+
+- name: Normalize Docker container audit results
+  ansible.builtin.set_fact:
+    audit_container_results: "{{ audit_container_results | default([]) + [ {
+      'runtime': 'docker',
+      'runtime_id': item.item,
+      'php_installed': ('PHP_PRESENT=1' in (item.stdout_lines | default([]))),
+      'php_version': ((item.stdout_lines | default([]) | select('match', '^PHP ') | list | first) | default('not available')),
+      'php_ini_setting': ((item.stdout_lines | default([]) | select('match', '^UPLOAD_PROGRESS=') | list | first | default('UPLOAD_PROGRESS=UNKNOWN')) | regex_replace('^UPLOAD_PROGRESS=', '') | upper),
+      'classification': ('NOT AFFECTED' if 'PHP_PRESENT=1' not in (item.stdout_lines | default([])) and item.rc | default(1) == 0 else ('POTENTIALLY VULNERABLE' if 'UPLOAD_PROGRESS=ON' in (item.stdout_lines | default([])) else ('MITIGATED' if 'UPLOAD_PROGRESS=OFF' in (item.stdout_lines | default([])) else 'NEEDS REVIEW')),
+      'probe_error': (item.stderr | default(''))
+      } ] }}"
+  loop: "{{ audit_docker_php_probes.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item | default('unknown container') }}"
+  when: item.item is defined
+
+- name: List running classic LXC containers
+  ansible.builtin.command:
+    argv:
+      - lxc-ls
+      - --active
+      - --line
+  register: audit_lxc_classic_containers
+  changed_when: false
+  failed_when: false
+  when: audit_scan_lxc_containers | bool
+
+- name: Probe PHP inside each running classic LXC container
+  ansible.builtin.command:
+    argv:
+      - lxc-attach
+      - --name
+      - "{{ item }}"
+      - --
+      - sh
+      - -c
+      - >-
+        if command -v php >/dev/null 2>&1; then
+          printf 'PHP_PRESENT=1\n';
+          php -v 2>/dev/null | head -n 1;
+          setting=$(php -r '$v = ini_get("session.upload_progress.enabled"); if ($v === false) { echo "UNKNOWN"; } else { echo in_array(strtolower((string) $v), array("1", "on", "yes", "true"), true) ? "ON" : "OFF"; }' 2>/dev/null) || setting=UNKNOWN;
+          printf 'UPLOAD_PROGRESS=%s\n' "$setting";
+        elif command -v php-cgi >/dev/null 2>&1 || command -v php-fpm >/dev/null 2>&1 || command -v php-fpm8.5 >/dev/null 2>&1 || command -v php-fpm8.4 >/dev/null 2>&1 || command -v php-fpm8.3 >/dev/null 2>&1 || command -v php-fpm8.2 >/dev/null 2>&1 || command -v php-fpm8.1 >/dev/null 2>&1 || command -v php-fpm8.0 >/dev/null 2>&1 || command -v php-fpm7.4 >/dev/null 2>&1 || command -v php-fpm7.3 >/dev/null 2>&1 || command -v php-fpm7.2 >/dev/null 2>&1 || command -v php-fpm7.1 >/dev/null 2>&1 || command -v php-fpm7.0 >/dev/null 2>&1 || command -v php-fpm5.6 >/dev/null 2>&1; then
+          printf 'PHP_PRESENT=1\n';
+          for candidate in php-cgi php-fpm php-fpm8.5 php-fpm8.4 php-fpm8.3 php-fpm8.2 php-fpm8.1 php-fpm8.0 php-fpm7.4 php-fpm7.3 php-fpm7.2 php-fpm7.1 php-fpm7.0 php-fpm5.6; do
+            if command -v "$candidate" >/dev/null 2>&1; then "$candidate" -v 2>/dev/null | head -n 1; break; fi
+          done
+          printf 'UPLOAD_PROGRESS=UNKNOWN\n';
+        else
+          printf 'PHP_PRESENT=0\n';
+        fi
+  register: audit_lxc_classic_php_probes
+  changed_when: false
+  failed_when: false
+  loop: "{{ audit_lxc_classic_containers.stdout_lines | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - audit_scan_lxc_containers | bool
+    - audit_lxc_classic_containers.rc | default(1) == 0
+
+- name: Normalize classic LXC container audit results
+  ansible.builtin.set_fact:
+    audit_container_results: "{{ audit_container_results | default([]) + [ {
+      'runtime': 'lxc',
+      'runtime_id': item.item,
+      'php_installed': ('PHP_PRESENT=1' in (item.stdout_lines | default([]))),
+      'php_version': ((item.stdout_lines | default([]) | select('match', '^PHP ') | list | first) | default('not available')),
+      'php_ini_setting': ((item.stdout_lines | default([]) | select('match', '^UPLOAD_PROGRESS=') | list | first | default('UPLOAD_PROGRESS=UNKNOWN')) | regex_replace('^UPLOAD_PROGRESS=', '') | upper),
+      'classification': ('NOT AFFECTED' if 'PHP_PRESENT=1' not in (item.stdout_lines | default([])) and item.rc | default(1) == 0 else ('POTENTIALLY VULNERABLE' if 'UPLOAD_PROGRESS=ON' in (item.stdout_lines | default([])) else ('MITIGATED' if 'UPLOAD_PROGRESS=OFF' in (item.stdout_lines | default([])) else 'NEEDS REVIEW')),
+      'probe_error': (item.stderr | default(''))
+      } ] }}"
+  loop: "{{ audit_lxc_classic_php_probes.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item | default('unknown LXC container') }}"
+  when: item.item is defined
+
+- name: List LXD containers and their states
+  ansible.builtin.command:
+    argv:
+      - lxc
+      - list
+      - --format
+      - csv
+      - --columns
+      - ns
+  register: audit_lxd_containers
+  changed_when: false
+  failed_when: false
+  when: audit_scan_lxc_containers | bool
+
+- name: Probe PHP inside each running LXD container
+  ansible.builtin.command:
+    argv:
+      - lxc
+      - exec
+      - "{{ item.split(',')[0] }}"
+      - --
+      - sh
+      - -c
+      - >-
+        if command -v php >/dev/null 2>&1; then
+          printf 'PHP_PRESENT=1\n';
+          php -v 2>/dev/null | head -n 1;
+          setting=$(php -r '$v = ini_get("session.upload_progress.enabled"); if ($v === false) { echo "UNKNOWN"; } else { echo in_array(strtolower((string) $v), array("1", "on", "yes", "true"), true) ? "ON" : "OFF"; }' 2>/dev/null) || setting=UNKNOWN;
+          printf 'UPLOAD_PROGRESS=%s\n' "$setting";
+        elif command -v php-cgi >/dev/null 2>&1 || command -v php-fpm >/dev/null 2>&1 || command -v php-fpm8.5 >/dev/null 2>&1 || command -v php-fpm8.4 >/dev/null 2>&1 || command -v php-fpm8.3 >/dev/null 2>&1 || command -v php-fpm8.2 >/dev/null 2>&1 || command -v php-fpm8.1 >/dev/null 2>&1 || command -v php-fpm8.0 >/dev/null 2>&1 || command -v php-fpm7.4 >/dev/null 2>&1 || command -v php-fpm7.3 >/dev/null 2>&1 || command -v php-fpm7.2 >/dev/null 2>&1 || command -v php-fpm7.1 >/dev/null 2>&1 || command -v php-fpm7.0 >/dev/null 2>&1 || command -v php-fpm5.6 >/dev/null 2>&1; then
+          printf 'PHP_PRESENT=1\n';
+          for candidate in php-cgi php-fpm php-fpm8.5 php-fpm8.4 php-fpm8.3 php-fpm8.2 php-fpm8.1 php-fpm8.0 php-fpm7.4 php-fpm7.3 php-fpm7.2 php-fpm7.1 php-fpm7.0 php-fpm5.6; do
+            if command -v "$candidate" >/dev/null 2>&1; then "$candidate" -v 2>/dev/null | head -n 1; break; fi
+          done
+          printf 'UPLOAD_PROGRESS=UNKNOWN\n';
+        else
+          printf 'PHP_PRESENT=0\n';
+        fi
+  register: audit_lxd_php_probes
+  changed_when: false
+  failed_when: false
+  loop: "{{ audit_lxd_containers.stdout_lines | default([]) }}"
+  loop_control:
+    label: "{{ item.split(',')[0] }}"
+  when:
+    - audit_scan_lxc_containers | bool
+    - audit_lxd_containers.rc | default(1) == 0
+    - item.split(',') | length >= 2
+    - item.split(',')[1] == 'RUNNING'
+
+- name: Normalize LXD container audit results
+  ansible.builtin.set_fact:
+    audit_container_results: "{{ audit_container_results | default([]) + [ {
+      'runtime': 'lxd',
+      'runtime_id': item.item.split(',')[0],
+      'php_installed': ('PHP_PRESENT=1' in (item.stdout_lines | default([]))),
+      'php_version': ((item.stdout_lines | default([]) | select('match', '^PHP ') | list | first) | default('not available')),
+      'php_ini_setting': ((item.stdout_lines | default([]) | select('match', '^UPLOAD_PROGRESS=') | list | first | default('UPLOAD_PROGRESS=UNKNOWN')) | regex_replace('^UPLOAD_PROGRESS=', '') | upper),
+      'classification': ('NOT AFFECTED' if 'PHP_PRESENT=1' not in (item.stdout_lines | default([])) and item.rc | default(1) == 0 else ('POTENTIALLY VULNERABLE' if 'UPLOAD_PROGRESS=ON' in (item.stdout_lines | default([])) else ('MITIGATED' if 'UPLOAD_PROGRESS=OFF' in (item.stdout_lines | default([])) else 'NEEDS REVIEW')),
+      'probe_error': (item.stderr | default(''))
+      } ] }}"
+  loop: "{{ audit_lxd_php_probes.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.split(',')[0] | default('unknown LXD container') }}"
+  when: item.item is defined
+
+- name: List Kubernetes pods and container names
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - get
+      - pods
+      - --all-namespaces
+      - "-o=jsonpath={range .items[*]}{.metadata.namespace}{\"\\t\"}{.metadata.name}{\"\\t\"}{.status.phase}{\"\\t\"}{range .spec.containers[*]}{.name}{\",\"}{end}{\"\\n\"}{end}"
+  register: audit_kubernetes_pods_raw
+  changed_when: false
+  failed_when: false
+  become: false
+  when: audit_scan_kubernetes_pods | bool
+
+- name: Normalize Kubernetes pod inventory
+  ansible.builtin.set_fact:
+    audit_kubernetes_pods: "{{ audit_kubernetes_pods | default([]) + [ {
+      'namespace': item.split('\t')[0],
+      'name': item.split('\t')[1],
+      'phase': item.split('\t')[2],
+      'containers': (item.split('\t')[3].split(',') | reject('equalto', '') | list)
+      } ] }}"
+  loop: "{{ audit_kubernetes_pods_raw.stdout_lines | default([]) }}"
+  loop_control:
+    label: "{{ item.split('\t')[0] ~ '/' ~ item.split('\t')[1] }}"
+  become: false
+  when:
+    - audit_scan_kubernetes_pods | bool
+    - audit_kubernetes_pods_raw.rc | default(1) == 0
+    - item.split('\t') | length >= 4
+
+- name: Probe PHP inside each running Kubernetes pod container
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - exec
+      - --namespace
+      - "{{ item.0.namespace }}"
+      - --container
+      - "{{ item.1 }}"
+      - "{{ item.0.name }}"
+      - --
+      - sh
+      - -c
+      - >-
+        if command -v php >/dev/null 2>&1; then
+          printf 'PHP_PRESENT=1\n';
+          php -v 2>/dev/null | head -n 1;
+          setting=$(php -r '$v = ini_get("session.upload_progress.enabled"); if ($v === false) { echo "UNKNOWN"; } else { echo in_array(strtolower((string) $v), array("1", "on", "yes", "true"), true) ? "ON" : "OFF"; }' 2>/dev/null) || setting=UNKNOWN;
+          printf 'UPLOAD_PROGRESS=%s\n' "$setting";
+        elif command -v php-cgi >/dev/null 2>&1 || command -v php-fpm >/dev/null 2>&1 || command -v php-fpm8.5 >/dev/null 2>&1 || command -v php-fpm8.4 >/dev/null 2>&1 || command -v php-fpm8.3 >/dev/null 2>&1 || command -v php-fpm8.2 >/dev/null 2>&1 || command -v php-fpm8.1 >/dev/null 2>&1 || command -v php-fpm8.0 >/dev/null 2>&1 || command -v php-fpm7.4 >/dev/null 2>&1 || command -v php-fpm7.3 >/dev/null 2>&1 || command -v php-fpm7.2 >/dev/null 2>&1 || command -v php-fpm7.1 >/dev/null 2>&1 || command -v php-fpm7.0 >/dev/null 2>&1 || command -v php-fpm5.6 >/dev/null 2>&1; then
+          printf 'PHP_PRESENT=1\n';
+          for candidate in php-cgi php-fpm php-fpm8.5 php-fpm8.4 php-fpm8.3 php-fpm8.2 php-fpm8.1 php-fpm8.0 php-fpm7.4 php-fpm7.3 php-fpm7.2 php-fpm7.1 php-fpm7.0 php-fpm5.6; do
+            if command -v "$candidate" >/dev/null 2>&1; then "$candidate" -v 2>/dev/null | head -n 1; break; fi
+          done
+          printf 'UPLOAD_PROGRESS=UNKNOWN\n';
+        else
+          printf 'PHP_PRESENT=0\n';
+        fi
+  register: audit_kubernetes_php_probes
+  changed_when: false
+  failed_when: false
+  loop: "{{ query('subelements', audit_kubernetes_pods | default([]), 'containers') }}"
+  loop_control:
+    label: "{{ item.0.namespace }}/{{ item.0.name }}/{{ item.1 }}"
+  become: false
+  when:
+    - audit_scan_kubernetes_pods | bool
+    - item.0.phase == 'Running'
+
+- name: Normalize Kubernetes container audit results
+  ansible.builtin.set_fact:
+    audit_container_results: "{{ audit_container_results | default([]) + [ {
+      'runtime': 'kubernetes',
+      'runtime_id': item.item.0.namespace ~ '/' ~ item.item.0.name ~ '/' ~ item.item.1,
+      'php_installed': ('PHP_PRESENT=1' in (item.stdout_lines | default([]))),
+      'php_version': ((item.stdout_lines | default([]) | select('match', '^PHP ') | list | first) | default('not available')),
+      'php_ini_setting': ((item.stdout_lines | default([]) | select('match', '^UPLOAD_PROGRESS=') | list | first | default('UPLOAD_PROGRESS=UNKNOWN')) | regex_replace('^UPLOAD_PROGRESS=', '') | upper),
+      'classification': ('NOT AFFECTED' if 'PHP_PRESENT=1' not in (item.stdout_lines | default([])) and item.rc | default(1) == 0 else ('POTENTIALLY VULNERABLE' if 'UPLOAD_PROGRESS=ON' in (item.stdout_lines | default([])) else ('MITIGATED' if 'UPLOAD_PROGRESS=OFF' in (item.stdout_lines | default([])) else 'NEEDS REVIEW')),
+      'probe_error': (item.stderr | default(''))
+      } ] }}"
+  loop: "{{ audit_kubernetes_php_probes.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.0.namespace | default('unknown') }}/{{ item.item.0.name | default('unknown') }}"
+  when: item.item is defined
+
+- name: Derive PHP installation evidence
+  ansible.builtin.set_fact:
+    audit_php_detected: "{{ (audit_php_binary.rc | default(1) == 0) or ((audit_php_sapi_binaries.stdout_lines | default([]) | length) > 0) or ((audit_packages.stdout_lines | default([]) | select('match', '(?i)^(php|libphp)') | list | length) > 0) }}"
+
+- name: Build normalized per-host audit result
+  ansible.builtin.set_fact:
+    php_audit:
+      inventory_hostname: "{{ inventory_hostname }}"
+      hostname: "{{ ansible_hostname | default(inventory_hostname) }}"
+      fqdn: "{{ ansible_fqdn | default('unknown') }}"
+      ip_addresses: "{{ ansible_all_ipv4_addresses | default([]) }}"
+      primary_ip: "{{ ansible_default_ipv4.address | default((ansible_all_ipv4_addresses | default([]) | first) | default('unknown')) }}"
+      operating_system: "{{ (ansible_distribution | default('unknown')) ~ ' ' ~ (ansible_distribution_version | default('')) }}"
+      kernel: "{{ (ansible_kernel | default('unknown')) ~ ' ' ~ (ansible_kernel_version | default('')) }}"
+      uptime_seconds: "{{ ansible_uptime_seconds | default(0) | int }}"
+      php_installed: "{{ audit_php_detected }}"
+      php_detection_status: "{{ 'detected' if audit_php_detected else ('not detected' if audit_packages.rc | default(1) == 0 else 'unknown: package discovery failed') }}"
+      php_version: "{{ (audit_php_version.stdout_lines | default([]) | first) | default((audit_php_sapi_version.stdout_lines | default([]) | first) | default('not available', true), true) }}"
+      php_ini_setting_raw: "{{ audit_upload_progress.stdout | default('') | trim }}"
+      php_ini_setting: "{{ (audit_upload_progress.stdout | default('UNKNOWN') | trim | upper) if (audit_upload_progress.stdout | default('UNKNOWN') | trim | upper) in ['ON', 'OFF'] else 'UNKNOWN' }}"
+      php_ini_setting_error: "{{ audit_upload_progress.stderr | default('') }}"
+      php_ini_scope: "CLI SAPI only; web SAPI configuration may differ"
+      php_cgi_binaries: "{{ audit_php_sapi_binaries.stdout_lines | default([]) | select('search', '/php-cgi$') | list }}"
+      php_fpm_binaries: "{{ audit_php_sapi_binaries.stdout_lines | default([]) | select('search', '/php-fpm') | list }}"
+      php_cgi_installed: "{{ ((audit_php_sapi_binaries.stdout_lines | default([]) | select('search', '/php-cgi$') | list | length) > 0) or ((audit_packages.stdout_lines | default([]) | select('search', '(?i)php.*cgi') | list | length) > 0) }}"
+      php_fpm_installed: "{{ ((audit_php_sapi_binaries.stdout_lines | default([]) | select('search', '/php-fpm') | list | length) > 0) or ((audit_packages.stdout_lines | default([]) | select('search', '(?i)php.*fpm') | list | length) > 0) }}"
+      php_packages: "{{ audit_packages.stdout_lines | default([]) | select('match', '(?i)^(php|libphp)') | list }}"
+      web_packages: "{{ audit_packages.stdout_lines | default([]) | select('match', '(?i)^(apache2|httpd|nginx|tomcat|websphere)') | list }}"
+      apache_installed: "{{ ((audit_packages.stdout_lines | default([]) | select('match', '(?i)^(apache2|httpd)') | list | length) > 0) or ((audit_web_server_binaries.stdout_lines | default([]) | select('search', '/(apache2|httpd|apachectl|apache2ctl)$') | list | length) > 0) or ((audit_service_names | default([]) | select('match', '(?i)^(apache2|httpd)(\\.service)?$') | list | length) > 0) }}"
+      apache_active: "{{ ((audit_running_service_names | default([]) | select('match', '(?i)^(apache2|httpd)(\\.service)?$') | list | length) > 0) or ('active:apache' in (audit_process_probe.stdout_lines | default([]))) }}"
+      nginx_installed: "{{ ((audit_packages.stdout_lines | default([]) | select('match', '(?i)^nginx') | list | length) > 0) or ((audit_web_server_binaries.stdout_lines | default([]) | select('search', '/nginx$') | list | length) > 0) or ((audit_service_names | default([]) | select('match', '(?i)^nginx(\\.service)?$') | list | length) > 0) }}"
+      nginx_active: "{{ ((audit_running_service_names | default([]) | select('match', '(?i)^nginx(\\.service)?$') | list | length) > 0) or ('active:nginx' in (audit_process_probe.stdout_lines | default([]))) }}"
+      tomcat_installed: "{{ ((audit_packages.stdout_lines | default([]) | select('match', '(?i)^tomcat') | list | length) > 0) or ((audit_service_names | default([]) | select('match', '(?i)^tomcat[0-9]*(\\.service)?$') | list | length) > 0) or ((audit_tomcat_paths.stdout_lines | default([]) | length) > 0) }}"
+      tomcat_active: "{{ ((audit_running_service_names | default([]) | select('match', '(?i)^tomcat[0-9]*(\\.service)?$') | list | length) > 0) or ('active:tomcat' in (audit_process_probe.stdout_lines | default([]))) }}"
+      websphere_installed: "{{ ((audit_packages.stdout_lines | default([]) | select('match', '(?i)^websphere') | list | length) > 0) or ((audit_websphere_paths.stdout_lines | default([]) | length) > 0) or ((audit_service_names | default([]) | select('match', '(?i)^(websphere|ibm-websphere)(\\.service)?$') | list | length) > 0) }}"
+      websphere_active: "{{ ((audit_running_service_names | default([]) | select('match', '(?i)^(websphere|ibm-websphere)(\\.service)?$') | list | length) > 0) or ('active:websphere' in (audit_process_probe.stdout_lines | default([]))) }}"
+      websphere_paths: "{{ audit_websphere_paths.stdout_lines | default([]) }}"
+      listening_tcp_ports: "{{ audit_listening_ports.stdout_lines | default([]) | map('int') | list }}"
+      php_file_count: "{{ audit_php_file_count.stdout | default('0') | trim | int }}"
+      php_directories: "{{ audit_php_directories.stdout_lines | default([]) }}"
+      war_file_count: "{{ audit_war_count.stdout | default('0') | trim | int }}"
+      war_deployment_directories: "{{ audit_war_directories.stdout_lines | default([]) }}"
+      document_roots_found: "{{ audit_document_roots_found.stdout_lines | default([]) }}"
+      container_results: "{{ audit_container_results | default([]) }}"
+      docker_running_container_count: "{{ audit_docker_containers.stdout_lines | default([]) | length }}"
+      lxc_classic_running_container_count: "{{ audit_lxc_classic_containers.stdout_lines | default([]) | length }}"
+      lxd_running_container_count: "{{ (audit_lxd_containers.stdout_lines | default([]) | select('search', ',RUNNING$') | list | length) }}"
+      kubernetes_pod_count: "{{ audit_kubernetes_pods | default([]) | length }}"
+      lxc_classic_scan_status: "{{ 'disabled' if not (audit_scan_lxc_containers | bool) else ('completed' if audit_lxc_classic_containers.rc | default(1) == 0 else 'unavailable or access denied') }}"
+      lxd_scan_status: "{{ 'disabled' if not (audit_scan_lxc_containers | bool) else ('completed' if audit_lxd_containers.rc | default(1) == 0 else 'unavailable or access denied') }}"
+      docker_scan_status: "{{ 'disabled' if not (audit_scan_docker_containers | bool) else ('completed' if audit_docker_containers.rc | default(1) == 0 else 'failed: ' ~ (audit_docker_containers.stderr | default('runtime unavailable'))) }}"
+      kubernetes_scan_status: "{{ 'disabled' if not (audit_scan_kubernetes_pods | bool) else ('completed' if audit_kubernetes_pods_raw.rc | default(1) == 0 else 'failed: ' ~ (audit_kubernetes_pods_raw.stderr | default('kubectl unavailable or access denied'))) }}"
+      php_setting_collection_rc: "{{ audit_upload_progress.rc | default(-1) | int }}"
+      package_discovery_error: "{{ audit_packages.stderr | default('') }}"
+      classification: "{{ 'NEEDS REVIEW' if not audit_php_detected and audit_packages.rc | default(1) != 0 else ('NOT AFFECTED' if not audit_php_detected else ('POTENTIALLY VULNERABLE' if ((audit_upload_progress.rc | default(1) == 0) and (audit_upload_progress.stdout | default('UNKNOWN') | trim | upper) == 'ON') else ('MITIGATED' if ((audit_upload_progress.rc | default(1) == 0) and (audit_upload_progress.stdout | default('UNKNOWN') | trim | upper) == 'OFF') else 'NEEDS REVIEW')) }}"

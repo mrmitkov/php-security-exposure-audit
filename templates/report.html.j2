@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PHP Security Exposure Audit</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: #17212b;
+      background: #f3f6fa;
+    }
+    body { margin: 0; padding: 2rem; }
+    main { max-width: 1500px; margin: auto; }
+    header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; }
+    header svg { width: 3.5rem; height: 3.5rem; flex: none; }
+    h1 { margin: 0; font-size: 1.8rem; }
+    .subtitle, .muted { color: #526273; }
+    .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: .8rem; margin: 1.25rem 0; }
+    .card, section { background: #fff; border: 1px solid #dbe3ec; border-radius: 8px; padding: 1rem; }
+    .card strong { display: block; font-size: 1.7rem; margin-top: .35rem; }
+    .card.vulnerable strong { color: #b42318; }
+    .card.mitigated strong { color: #067647; }
+    .card.review strong { color: #a15c00; }
+    .table-wrap { overflow-x: auto; background: #fff; border: 1px solid #dbe3ec; border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    th, td { padding: .65rem; border-bottom: 1px solid #e5eaf0; text-align: left; vertical-align: top; }
+    th { position: sticky; top: 0; background: #17365d; color: #fff; white-space: nowrap; }
+    th button { border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; cursor: pointer; }
+    tbody tr:hover { background: #f5f8fc; }
+    .badge { display: inline-block; border-radius: 999px; padding: .25rem .55rem; font-weight: 700; white-space: nowrap; }
+    .potentially-vulnerable { background: #fee4e2; color: #912018; }
+    .needs-review { background: #fff1cc; color: #7a4b00; }
+    .mitigated { background: #dcfae6; color: #05603a; }
+    .not-affected { background: #e8eef5; color: #344054; }
+    details { max-width: 24rem; }
+    details ul { margin: .35rem 0; padding-left: 1.2rem; }
+    section { margin-top: 1.2rem; line-height: 1.5; }
+    code, pre { font-family: Consolas, "Courier New", monospace; }
+    pre { overflow-x: auto; padding: .8rem; background: #f3f6fa; border-radius: 5px; }
+    @media print {
+      body { padding: 0; background: #fff; }
+      .table-wrap, .card, section { break-inside: avoid; }
+      th { position: static; }
+      th button { cursor: default; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <svg viewBox="0 0 64 64" role="img" aria-label="Security shield">
+      <path d="M32 3 55 12v17c0 15-9 25-23 32C18 54 9 44 9 29V12L32 3Z" fill="#17365d"/>
+      <path d="m21 31 7 7 15-16" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
+    </svg>
+    <div>
+      <h1>PHP Security Exposure Audit</h1>
+      <div class="subtitle">CVE-2026-109618 · CVE-2026-109619</div>
+      <div class="muted">Generato: {{ now(utc=true, fmt='%Y-%m-%d %H:%M:%S UTC') }}</div>
+    </div>
+  </header>
+
+  {% set stats = namespace(hosts=0, php=0, vulnerable=0, mitigated=0, review=0, unaffected=0, containers=0, container_vulnerable=0) %}
+  {% for target in groups['all'] %}
+    {% if hostvars[target].php_audit is defined %}
+      {% set audit = hostvars[target].php_audit %}
+      {% set stats.hosts = stats.hosts + 1 %}
+      {% if audit.php_installed %}{% set stats.php = stats.php + 1 %}{% endif %}
+      {% if audit.classification == 'POTENTIALLY VULNERABLE' %}{% set stats.vulnerable = stats.vulnerable + 1 %}{% endif %}
+      {% if audit.classification == 'MITIGATED' %}{% set stats.mitigated = stats.mitigated + 1 %}{% endif %}
+      {% if audit.classification == 'NEEDS REVIEW' %}{% set stats.review = stats.review + 1 %}{% endif %}
+      {% if audit.classification == 'NOT AFFECTED' %}{% set stats.unaffected = stats.unaffected + 1 %}{% endif %}
+      {% for runtime in audit.container_results | default([]) %}
+        {% set stats.containers = stats.containers + 1 %}
+        {% if runtime.classification == 'POTENTIALLY VULNERABLE' %}{% set stats.container_vulnerable = stats.container_vulnerable + 1 %}{% endif %}
+      {% endfor %}
+    {% endif %}
+  {% endfor %}
+
+  <div class="summary" aria-label="Audit summary">
+    <div class="card"><span>Host analizzati</span><strong>{{ stats.hosts }}</strong></div>
+    <div class="card"><span>Host con PHP</span><strong>{{ stats.php }}</strong></div>
+    <div class="card vulnerable"><span>Potenzialmente vulnerabili</span><strong>{{ stats.vulnerable }}</strong></div>
+    <div class="card mitigated"><span>Mitigati</span><strong>{{ stats.mitigated }}</strong></div>
+    <div class="card review"><span>Da verificare</span><strong>{{ stats.review }}</strong></div>
+    <div class="card"><span>Senza PHP</span><strong>{{ stats.unaffected }}</strong></div>
+    <div class="card"><span>Container ispezionati</span><strong>{{ stats.containers }}</strong></div>
+    <div class="card vulnerable"><span>Container potenzialmente vulnerabili</span><strong>{{ stats.container_vulnerable }}</strong></div>
+  </div>
+
+  <div class="table-wrap">
+    <table id="audit-table">
+      <thead>
+        <tr>
+          {% for heading in ['Host', 'FQDN', 'IP', 'Sistema operativo', 'Kernel / uptime', 'PHP', 'PHP-FPM', 'PHP-CGI', 'Upload progress', 'Apache', 'Nginx', 'Tomcat', 'WebSphere', 'Porte TCP', 'File PHP', 'File WAR', 'Document root', 'Docker / pod', 'Stato Docker', 'LXC classic/LXD', 'Stato LXC classic', 'Stato LXD', 'Stato Kubernetes', 'Classificazione'] %}
+            <th><button type="button" onclick="sortAuditTable({{ loop.index0 }})">{{ heading }}</button></th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for target in groups['all'] %}
+          {% if hostvars[target].php_audit is defined %}
+            {% set audit = hostvars[target].php_audit %}
+            <tr>
+              <td>{{ audit.hostname | default(target) | e }}</td>
+              <td>{{ audit.fqdn | default('unknown') | e }}</td>
+              <td>{{ audit.ip_addresses | default([]) | join(', ') | e }}</td>
+              <td>{{ audit.operating_system | default('unknown') | e }}</td>
+              <td>{{ audit.kernel | default('unknown') | e }}<br><span class="muted">{{ audit.uptime_seconds | default(0) }} s</span></td>
+              <td>{% if audit.php_installed %}{{ audit.php_version | default('installed') | e }}{% elif audit.php_detection_status | default('') == 'unknown: package discovery failed' %}Unknown{% else %}No{% endif %}</td>
+              <td>{{ 'Installed' if audit.php_fpm_installed else 'Not detected' }}{% if audit.php_fpm_binaries | default([]) | length %}<br>{{ audit.php_fpm_binaries | join(', ') | e }}{% endif %}</td>
+              <td>{{ 'Installed' if audit.php_cgi_installed else 'Not detected' }}{% if audit.php_cgi_binaries | default([]) | length %}<br>{{ audit.php_cgi_binaries | join(', ') | e }}{% endif %}</td>
+              <td title="{{ ((audit.php_ini_scope | default('')) ~ ' ' ~ (audit.php_ini_setting_error | default(''))) | e }}">{{ audit.php_ini_setting | default('UNKNOWN') | e }}</td>
+              <td>{{ 'Active' if audit.apache_active else ('Installed, inactive' if audit.apache_installed else 'Not detected') }}</td>
+              <td>{{ 'Active' if audit.nginx_active else ('Installed, inactive' if audit.nginx_installed else 'Not detected') }}</td>
+              <td>{{ 'Active' if audit.tomcat_active else ('Installed, inactive' if audit.tomcat_installed else 'Not detected') }}</td>
+              <td>{{ 'Active' if audit.websphere_active else ('Installed, inactive' if audit.websphere_installed else 'Not detected') }}</td>
+              <td>{{ audit.listening_tcp_ports | default([]) | join(', ') | e }}</td>
+              <td>{{ audit.php_file_count | default(0) }}</td>
+              <td>{{ audit.war_file_count | default(0) }}</td>
+              <td>
+                {% if audit.document_roots_found | default([]) | length %}
+                  <details><summary>{{ audit.document_roots_found | length }} individuati</summary>
+                    <ul>{% for path in audit.document_roots_found %}<li>{{ path | e }}</li>{% endfor %}</ul>
+                  </details>
+                {% else %}Nessuno individuato{% endif %}
+              </td>
+              <td>{{ audit.docker_running_container_count | default(0) }} container / {{ audit.kubernetes_pod_count | default(0) }} pod</td>
+              <td>{{ audit.docker_scan_status | default('unknown') | e }}</td>
+              <td>{{ audit.lxc_classic_running_container_count | default(0) }} classic / {{ audit.lxd_running_container_count | default(0) }} LXD</td>
+              <td>{{ audit.lxc_classic_scan_status | default('unknown') | e }}</td>
+              <td>{{ audit.lxd_scan_status | default('unknown') | e }}</td>
+              <td>{{ audit.kubernetes_scan_status | default('unknown') | e }}</td>
+              <td><span class="badge {{ audit.classification | lower | replace(' ', '-') | e }}">{{ audit.classification | e }}</span></td>
+            </tr>
+          {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <section>
+    <h2>Container Docker, LXC/LXD e pod Kubernetes</h2>
+    <p>Il playbook tenta una verifica read-only dei container in esecuzione nei runtime Docker, LXC classic, LXD e Kubernetes. La sonda avvia un processo temporaneo nel container per leggere versione PHP e impostazione CLI; i container senza shell o senza autorizzazione risultano da verificare. Lo stato delle scansioni è incluso nei report JSON e CSV.</p>
+    <div class="table-wrap">
+      <table id="runtime-table">
+        <thead><tr><th>Host</th><th>Runtime / identificativo</th><th>PHP</th><th>Upload progress</th><th>Classificazione</th><th>Errore sonda</th></tr></thead>
+        <tbody>
+          {% for target in groups['all'] %}
+            {% if hostvars[target].php_audit is defined %}
+              {% for runtime in hostvars[target].php_audit.container_results | default([]) %}
+                <tr>
+                  <td>{{ hostvars[target].php_audit.hostname | e }}</td>
+                  <td>{{ runtime.runtime | e }} / {{ runtime.runtime_id | e }}</td>
+                  <td>{{ runtime.php_version | default('No PHP / non disponibile') | e }}</td>
+                  <td>{{ runtime.php_ini_setting | default('UNKNOWN') | e }}</td>
+                  <td><span class="badge {{ runtime.classification | lower | replace(' ', '-') | e }}">{{ runtime.classification | e }}</span></td>
+                  <td>{{ runtime.probe_error | default('') | e }}</td>
+                </tr>
+              {% endfor %}
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Interpretazione e limiti</h2>
+    <p>La classificazione è una valutazione di esposizione basata sulla presenza di PHP e sul valore di <code>session.upload_progress.enabled</code> letto dalla configurazione PHP CLI. Il valore del SAPI web (FPM/CGI/mod_php) può differire; verificare il valore effettivo dell'applicazione prima di concludere.</p>
+    <p>L'advisory disponibile segnala CVE-2026-109618 e CVE-2026-109619 e indica PHP 5+ come potenzialmente interessato, ma non elenca le versioni esatte interessate o corrette. <strong>“POTENTIALLY VULNERABLE” non equivale quindi a una conferma della CVE</strong>: verificare le versioni corrette del vendor e applicare gli aggiornamenti. La disattivazione dell'opzione è una mitigazione indicata dall'advisory, non sostituisce la patch.</p>
+    <ul>
+      <li><strong>NOT AFFECTED:</strong> nessuna installazione PHP rilevata.</li>
+      <li><strong>NEEDS REVIEW:</strong> PHP rilevato, ma il parametro non è stato determinato.</li>
+      <li><strong>MITIGATED:</strong> PHP rilevato e parametro CLI disattivato.</li>
+      <li><strong>POTENTIALLY VULNERABLE:</strong> PHP rilevato e parametro CLI attivo.</li>
+    </ul>
+    <p>Un host con solo Tomcat/Java e senza PHP non è interessato a queste vulnerabilità specifiche di PHP. La presenza di porte o file WAR non implica la presenza di PHP. Se non è possibile accedere a Docker o all'API Kubernetes, i container non ispezionati non vanno considerati “NOT AFFECTED”.</p>
+    <h3>Verifica manuale</h3>
+    <pre>php -v
+php --ini
+php -r 'var_export(ini_get("session.upload_progress.enabled"));'
+php-fpm -i | grep session.upload_progress.enabled
+find /usr /home /var/www /srv /opt -type f -name '*.php' 2&gt;/dev/null</pre>
+    <p>Per FPM, CGI o mod_php controllare il file <code>php.ini</code> effettivamente caricato dal relativo SAPI e la configurazione del pool/web server. Consultare le advisory ufficiali PHP e gli aggiornamenti del sistema operativo per le versioni corrette.</p>
+  </section>
+</main>
+<script>
+  const sortDirections = {};
+  function sortAuditTable(column) {
+    const table = document.getElementById("audit-table");
+    const body = table.tBodies[0];
+    const rows = Array.from(body.rows);
+    sortDirections[column] = !sortDirections[column];
+    rows.sort((left, right) => {
+      const a = left.cells[column].innerText.trim();
+      const b = right.cells[column].innerText.trim();
+      return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }) * (sortDirections[column] ? 1 : -1);
+    });
+    rows.forEach(row => body.appendChild(row));
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+---
+- name: Run read-only host discovery
+  ansible.builtin.import_tasks: php_audit.yml

@@ -1,0 +1,21 @@
+---
+- name: Audit PHP security exposure
+  hosts: all
+  become: true
+  gather_facts: true
+  vars_files:
+    - defaults/main.yml
+  tasks:
+    - name: Collect host audit data
+      ansible.builtin.import_tasks: tasks/main.yml
+
+- name: Generate consolidated reports on the controller
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  vars_files:
+    - defaults/main.yml
+  tasks:
+    - name: Generate audit reports
+      ansible.builtin.import_tasks: tasks/report.yml

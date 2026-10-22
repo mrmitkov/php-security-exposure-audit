@@ -1,0 +1,34 @@
+# ---> Ansible
+*.retry
+# AI context locale
+.ai-context/
+docs/
+
+# Python
+*.pyc
+__pycache__/
+
+# VS Code
+.vscode/
+
+# Molecule
+.molecule/
+
+# Logs
+*.log
+
+# Secrets
+vault.yml
+*.vault
+*.key
+*.pem
+
+# Temporary files
+tmp/
+temp/
+
+# Generated audit reports
+reports/
+
+# Report personale in HTML
+README.html

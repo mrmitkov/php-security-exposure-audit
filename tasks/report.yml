@@ -1,0 +1,57 @@
+---
+- name: Create local report output directory
+  ansible.builtin.file:
+    path: "{{ audit_output_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Write individual JSON report for each audited host
+  ansible.builtin.copy:
+    content: "{{ hostvars[item].php_audit | to_nice_json }}\n"
+    dest: "{{ audit_output_dir }}/{{ item | regex_replace('[^A-Za-z0-9_.-]', '_') }}.json"
+    mode: "0640"
+  loop: "{{ groups['all'] }}"
+  loop_control:
+    label: "{{ item }}"
+  when: hostvars[item].php_audit is defined
+
+- name: Generate consolidated CSV report
+  ansible.builtin.template:
+    src: templates/report.csv.j2
+    dest: "{{ audit_output_dir }}/php_security_audit.csv"
+    mode: "0640"
+
+- name: Generate consolidated HTML report
+  ansible.builtin.template:
+    src: templates/report.html.j2
+    dest: "{{ audit_output_dir }}/php_security_audit.html"
+    mode: "0640"
+
+- name: Check wkhtmltopdf availability on the controller
+  ansible.builtin.command: wkhtmltopdf --version
+  register: audit_wkhtmltopdf
+  changed_when: false
+  failed_when: false
+  when: audit_generate_pdf | bool
+
+- name: Require wkhtmltopdf when PDF generation is enabled
+  ansible.builtin.assert:
+    that:
+      - audit_wkhtmltopdf.rc == 0
+    fail_msg: "PDF generation is enabled, but wkhtmltopdf is not installed or not available on the Ansible controller."
+  when: audit_generate_pdf | bool
+
+- name: Convert consolidated HTML report to PDF
+  ansible.builtin.command:
+    argv:
+      - wkhtmltopdf
+      - --enable-local-file-access
+      - --encoding
+      - UTF-8
+      - --quiet
+      - "{{ audit_output_dir }}/php_security_audit.html"
+      - "{{ audit_output_dir }}/php_security_audit.pdf"
+  register: audit_pdf_conversion
+  changed_when: audit_pdf_conversion.rc == 0
+  failed_when: audit_pdf_conversion.rc != 0
+  when: audit_generate_pdf | bool
