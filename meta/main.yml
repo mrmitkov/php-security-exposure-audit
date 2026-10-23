@@ -20,13 +20,16 @@ galaxy_info:
         - "7"
         - "8"
         - "9"
+        - "10"
     - name: OracleLinux
       versions:
         - "7"
         - "8"
         - "9"
+        - "10"
     - name: CentOS Stream
       versions:
+        - "8"
         - "9"
     - name: Rocky
       versions:
