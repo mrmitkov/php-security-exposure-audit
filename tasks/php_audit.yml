@@ -12,7 +12,9 @@
   register: audit_php_version
   changed_when: false
   failed_when: false
-  when: audit_php_binary.rc == 0
+  when:
+    - audit_php_binary is defined
+    - audit_php_binary.rc | default(1) == 0
 
 - name: Read upload progress setting from PHP CLI
   ansible.builtin.command:
@@ -23,7 +25,9 @@
   register: audit_upload_progress
   changed_when: false
   failed_when: false
-  when: audit_php_binary.rc == 0
+  when:
+    - audit_php_binary is defined
+    - audit_php_binary.rc | default(1) == 0
 
 - name: Discover PHP CGI and FPM executables
   ansible.builtin.shell: |
@@ -45,7 +49,8 @@
   changed_when: false
   failed_when: false
   when:
-    - audit_php_binary.rc != 0
+    - audit_php_binary is defined
+    - audit_php_binary.rc | default(1) != 0
     - audit_php_sapi_binaries.stdout_lines | default([]) | length > 0
 
 - name: Discover installed PHP and web application packages
@@ -536,7 +541,7 @@
     audit_container_results_fixed: "{{ audit_container_results_fixed | default([]) + [item | combine({
       'php_version_fixed': ((item.php_version_number | default('')).split('.')[0:2] | join('.')) in audit_php_fixed_versions and ((item.php_version_number | default('')).split('.')[2] | int >= audit_php_fixed_versions[(item.php_version_number | default('')).split('.')[0:2] | join('.')].split('.')[2] | int),
       'classification': ('FIXED VERSION' if (((item.php_version_number | default('')).split('.')[0:2] | join('.')) in audit_php_fixed_versions and ((item.php_version_number | default('')).split('.')[2] | int >= audit_php_fixed_versions[(item.php_version_number | default('')).split('.')[0:2] | join('.')].split('.')[2] | int)) else item['classification'])
-    })] }}"
+      })] }}"
   loop: "{{ audit_container_results | default([]) }}"
 
 - name: Replace container audit results with fixed-version classifications
