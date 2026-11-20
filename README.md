@@ -1,6 +1,6 @@
 # PHP Security Exposure Audit
 
-Playbook Ansible in sola lettura per censire host Linux e valutare la mitigazione indicata nell'advisory per **CVE-2026-109618** e **CVE-2026-109619**. Produce report JSON per host e report consolidati CSV, HTML e PDF.
+Playbook Ansible in sola lettura per censire host Linux e valutare l'esposizione alle vulnerabilità PHP descritte nell'Early Warning **EW20261119191812680** del 19/11/2026 (17 CVE). Produce report JSON per host e report consolidati CSV, HTML e PDF.
 
 ## Compatibilità
 
@@ -75,7 +75,7 @@ Il CSV include anche i percorsi che contengono file PHP, i deployment WAR e i do
 
 ## Interpretazione della vulnerabilità
 
-L'advisory allegato riporta CVE-2026-109618 e CVE-2026-109619 e indica che le versioni PHP dalla 5 in avanti potrebbero essere interessate. Le versioni dichiarate corrette sono **PHP 8.2.35, 8.3.36, 8.4.27 e 8.5.12**. Il report considera corretta anche una release patch successiva all'interno della stessa serie (8.2, 8.3, 8.4 o 8.5). Per queste versioni la classificazione è **FIXED VERSION**, indipendentemente dal valore di `session.upload_progress.enabled`. La versione rilevata è quella CLI, salvo fallback ai binari CGI/FPM quando la CLI non è presente; il SAPI web può differire. La valutazione non sostituisce la verifica degli advisory del vendor: le distribuzioni possono applicare backport senza cambiare la versione upstream mostrata da PHP.
+L'advisory EW20261119191812680 indica le release corrette **PHP 8.2.36, 8.3.37, 8.4.28 e 8.5.13**. Il report considera corretta anche una release patch successiva all'interno della stessa serie (8.2, 8.3, 8.4 o 8.5). Per queste versioni la classificazione è **FIXED VERSION**, indipendentemente dal valore di `session.upload_progress.enabled`. La versione rilevata è quella CLI, salvo fallback ai binari CGI/FPM quando la CLI non è presente; il SAPI web può differire. La valutazione non sostituisce la verifica degli advisory del vendor: le distribuzioni possono applicare backport senza cambiare la versione upstream mostrata da PHP.
 
 - **NOT AFFECTED**: nessun eseguibile/pacchetto PHP rilevato e discovery pacchetti completata.
 - **NEEDS REVIEW**: PHP rilevato ma il parametro non è determinabile, oppure l'inventario dei pacchetti è incompleto.

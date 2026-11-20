@@ -2,7 +2,7 @@
 
 ## Panoramica
 
-PHP Security Exposure Audit è un playbook Ansible in sola lettura che raccoglie informazioni dagli host Linux autorizzati e genera report sull'esposizione potenziale a CVE-2026-109618 e CVE-2026-109619. I risultati aiutano a individuare i sistemi da verificare: non sostituiscono l'analisi dell'advisory del vendor né una verifica della configurazione del servizio PHP effettivamente esposto.
+PHP Security Exposure Audit è un playbook Ansible in sola lettura che raccoglie informazioni dagli host Linux autorizzati e genera report sull'esposizione alle 17 vulnerabilità PHP descritte nell'Early Warning EW20261119191812680 del 19/11/2026. I risultati aiutano a individuare i sistemi da verificare: non sostituiscono l'analisi dell'advisory del vendor né una verifica della configurazione del servizio PHP effettivamente esposto.
 
 Il playbook non installa, modifica o riavvia software sui sistemi controllati. I dati vengono raccolti sugli host e i report vengono creati sul nodo di controllo Ansible.
 
@@ -72,7 +72,7 @@ Se un host dell'inventory corrente non ha prodotto dati nella scansione e il suo
 - **FIXED VERSION**: PHP è rilevato a una versione corretta o patch successiva della stessa serie.
 - **POTENTIALLY VULNERABLE**: PHP è stato rilevato e il valore CLI del parametro risulta `On`.
 
-Le versioni PHP dichiarate corrette sono **8.2.35, 8.3.36, 8.4.27 e 8.5.12**. Il report considera corrette anche le release patch successive nella stessa serie (rispettivamente 8.2, 8.3, 8.4 e 8.5) e assegna loro **FIXED VERSION**, indipendentemente dal valore CLI di `session.upload_progress.enabled`. La versione rilevata è quella CLI, salvo fallback ai binari CGI/FPM quando la CLI non è presente; il SAPI web può differire. La classificazione resta una valutazione di esposizione, non una verifica definitiva delle CVE.
+Le release corrette indicate dall'Early Warning EW20261119191812680 sono **8.2.36, 8.3.37, 8.4.28 e 8.5.13**. Il report considera corrette anche le release patch successive nella stessa serie (rispettivamente 8.2, 8.3, 8.4 e 8.5) e assegna loro **FIXED VERSION**, indipendentemente dal valore CLI di `session.upload_progress.enabled`. La versione rilevata è quella CLI, salvo fallback ai binari CGI/FPM quando la CLI non è presente; il SAPI web può differire. La classificazione resta una valutazione di esposizione, non una verifica definitiva delle CVE.
 
 Il valore letto con `php -r` riguarda il SAPI CLI. PHP-FPM, CGI e mod_php possono usare file `php.ini` o configurazioni per-pool differenti: verificare il SAPI che serve effettivamente l'applicazione. Anche uno stato **MITIGATED** richiede questa verifica. La disattivazione del parametro è una mitigazione temporanea indicata dall'advisory e non sostituisce l'aggiornamento a una versione corretta. Le distribuzioni possono applicare backport senza cambiare la versione upstream: verificare gli advisory del vendor.
 

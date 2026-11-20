@@ -58,7 +58,7 @@
     </svg>
     <div>
       <h1>PHP Security Exposure Audit</h1>
-      <div class="subtitle">CVE-2026-109618 · CVE-2026-109619</div>
+      <div class="subtitle">Early Warning EW20261119191812680 · 17 vulnerabilità PHP · 19/11/2026</div>
       <div class="muted">Generato: {{ now(utc=true, fmt='%Y-%m-%d %H:%M:%S UTC') }}</div>
     </div>
   </header>
@@ -206,7 +206,7 @@
   <section>
     <h2>Interpretazione e limiti</h2>
     <p>La classificazione è una valutazione di esposizione basata sulla presenza di PHP e sul valore di <code>session.upload_progress.enabled</code> letto dalla configurazione PHP CLI. Il valore del SAPI web (FPM/CGI/mod_php) può differire; verificare il valore effettivo dell'applicazione prima di concludere.</p>
-    <p>Le versioni PHP dichiarate corrette sono <code>8.2.35</code>, <code>8.3.36</code>, <code>8.4.27</code> e <code>8.5.12</code>. La stessa classificazione si applica alle release patch successive della rispettiva serie (8.2, 8.3, 8.4 o 8.5). <strong>“FIXED VERSION”</strong> indica una versione pari o superiore alla soglia corretta della propria serie; per queste versioni il valore di <code>session.upload_progress.enabled</code> non modifica la classificazione. La versione rilevata è quella CLI, salvo fallback ai binari CGI/FPM quando la CLI non è presente; il SAPI web può differire. Le versioni precedenti restano valutate anche in base al parametro CLI, ma gli aggiornamenti dei vendor possono includere backport: verificare sempre gli advisory della distribuzione.</p>
+    <p>L'advisory EW20261119191812680 del 19/11/2026 indica come versioni corrette <code>8.2.36</code>, <code>8.3.37</code>, <code>8.4.28</code> e <code>8.5.13</code>. La stessa classificazione si applica alle release patch successive della rispettiva serie (8.2, 8.3, 8.4 o 8.5). <strong>“FIXED VERSION”</strong> indica una versione pari o superiore alla soglia corretta della propria serie; per queste versioni il valore di <code>session.upload_progress.enabled</code> non modifica la classificazione. La versione rilevata è quella CLI, salvo fallback ai binari CGI/FPM quando la CLI non è presente; il SAPI web può differire. Le versioni precedenti restano valutate anche in base al parametro CLI, ma gli aggiornamenti dei vendor possono includere backport: verificare sempre gli advisory della distribuzione.</p>
     <ul>
       <li><strong>NOT AFFECTED:</strong> nessuna installazione PHP rilevata.</li>
       <li><strong>NEEDS REVIEW:</strong> PHP rilevato, ma il parametro non è stato determinato.</li>
