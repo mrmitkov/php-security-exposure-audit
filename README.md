@@ -78,12 +78,11 @@ Il CSV include anche i percorsi che contengono file PHP, i deployment WAR e i do
 L'advisory EW20261119191812680 indica le release corrette **PHP 8.2.36, 8.3.37, 8.4.28 e 8.5.13**. Il report considera corretta anche una release patch successiva all'interno della stessa serie (8.2, 8.3, 8.4 o 8.5). Per queste versioni la classificazione è **FIXED VERSION**, indipendentemente dal valore di `session.upload_progress.enabled`. La versione rilevata è quella CLI, salvo fallback ai binari CGI/FPM quando la CLI non è presente; il SAPI web può differire. La valutazione non sostituisce la verifica degli advisory del vendor: le distribuzioni possono applicare backport senza cambiare la versione upstream mostrata da PHP.
 
 - **NOT AFFECTED**: nessun eseguibile/pacchetto PHP rilevato e discovery pacchetti completata.
-- **NEEDS REVIEW**: PHP rilevato ma il parametro non è determinabile, oppure l'inventario dei pacchetti è incompleto.
-- **MITIGATED**: PHP rilevato e il parametro CLI risulta `Off`.
+- **NEEDS REVIEW**: PHP rilevato ma la release o l'inventario dei pacchetti non è determinabile.
 - **FIXED VERSION**: PHP rilevato a una versione corretta o patch successiva della stessa serie.
-- **POTENTIALLY VULNERABLE**: PHP rilevato e il parametro CLI risulta `On`.
+- **POTENTIALLY VULNERABLE**: PHP rilevato in una versione precedente alla soglia corretta della propria serie.
 
-`php -r` legge il SAPI CLI; FPM, CGI e mod_php possono caricare file `php.ini` o configurazioni per-pool differenti. Un risultato `MITIGATED` deve essere verificato sul SAPI che serve l'applicazione. La disattivazione è una mitigazione temporanea riportata dall'advisory, non sostituisce l'aggiornamento a una versione corretta. Per versioni installate tramite una distribuzione, verificare gli advisory del vendor: un backport di sicurezza può non essere riconoscibile dal numero di versione upstream.
+Per l'Early Warning EW20261119191812680 non viene proposta una mitigazione temporanea basata su `session.upload_progress.enabled`: una versione precedente alla soglia corretta resta classificata **POTENTIALLY VULNERABLE**, indipendentemente da quel parametro. `php -r` legge il SAPI CLI; FPM, CGI e mod_php possono caricare file `php.ini` o configurazioni per-pool differenti. Per versioni installate tramite una distribuzione, verificare gli advisory del vendor: un backport di sicurezza può non essere riconoscibile dal numero di versione upstream.
 
 Un host con solo Tomcat/Java e senza PHP non è interessato da queste vulnerabilità specifiche di PHP. Tomcat, porte web e file WAR sono inventariati per contesto, ma non costituiscono da soli indicatori di esposizione PHP.
 
@@ -94,8 +93,6 @@ Sul target, verificare la configurazione e la versione di ciascun SAPI PHP effet
 ```sh
 php -v
 php --ini
-php -r 'var_export(ini_get("session.upload_progress.enabled"));'
-php-fpm -i | grep session.upload_progress.enabled
 find /usr /home /var/www /srv /opt -type f -name '*.php' 2>/dev/null
 ```
 

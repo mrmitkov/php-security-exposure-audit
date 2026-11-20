@@ -67,7 +67,6 @@
   {% set stale_audits = [] %}
   {% set php_hosts = [] %}
   {% set vulnerable_hosts = [] %}
-  {% set mitigated_hosts = [] %}
   {% set fixed_hosts = [] %}
   {% set review_hosts = [] %}
   {% set unaffected_hosts = [] %}
@@ -83,7 +82,6 @@
       {% if audit.audit_data_source == 'scansione precedente' %}{% set _ = stale_audits.append(audit) %}{% endif %}
       {% if audit.php_installed %}{% set _ = php_hosts.append(audit) %}{% endif %}
       {% if audit.classification == 'POTENTIALLY VULNERABLE' %}{% set _ = vulnerable_hosts.append(audit) %}{% endif %}
-      {% if audit.classification == 'MITIGATED' %}{% set _ = mitigated_hosts.append(audit) %}{% endif %}
       {% if audit.classification == 'FIXED VERSION' %}{% set _ = fixed_hosts.append(audit) %}{% endif %}
       {% if audit.classification == 'NEEDS REVIEW' %}{% set _ = review_hosts.append(audit) %}{% endif %}
       {% if audit.classification == 'NOT AFFECTED' %}{% set _ = unaffected_hosts.append(audit) %}{% endif %}
@@ -104,7 +102,6 @@
     <div class="card"><span>Host analizzati</span><strong>{{ audits | length }}</strong></div>
     <div class="card"><span>Host con PHP</span><strong>{{ php_hosts | length }}</strong></div>
     <div class="card vulnerable"><span>Potenzialmente vulnerabili</span><strong>{{ vulnerable_hosts | length }}</strong></div>
-    <div class="card mitigated"><span>Mitigati</span><strong>{{ mitigated_hosts | length }}</strong></div>
     <div class="card fixed-version"><span>Versione corretta</span><strong>{{ fixed_hosts | length }}</strong></div>
     <div class="card review"><span>Da verificare</span><strong>{{ review_hosts | length }}</strong></div>
     <div class="card"><span>Senza PHP</span><strong>{{ unaffected_hosts | length }}</strong></div>
@@ -205,21 +202,18 @@
 
   <section>
     <h2>Interpretazione e limiti</h2>
-    <p>La classificazione è una valutazione di esposizione basata sulla presenza di PHP e sul valore di <code>session.upload_progress.enabled</code> letto dalla configurazione PHP CLI. Il valore del SAPI web (FPM/CGI/mod_php) può differire; verificare il valore effettivo dell'applicazione prima di concludere.</p>
-    <p>L'advisory EW20261119191812680 del 19/11/2026 indica come versioni corrette <code>8.2.36</code>, <code>8.3.37</code>, <code>8.4.28</code> e <code>8.5.13</code>. La stessa classificazione si applica alle release patch successive della rispettiva serie (8.2, 8.3, 8.4 o 8.5). <strong>“FIXED VERSION”</strong> indica una versione pari o superiore alla soglia corretta della propria serie; per queste versioni il valore di <code>session.upload_progress.enabled</code> non modifica la classificazione. La versione rilevata è quella CLI, salvo fallback ai binari CGI/FPM quando la CLI non è presente; il SAPI web può differire. Le versioni precedenti restano valutate anche in base al parametro CLI, ma gli aggiornamenti dei vendor possono includere backport: verificare sempre gli advisory della distribuzione.</p>
+    <p>La classificazione è una valutazione di esposizione basata sulla versione PHP rilevata e sulle soglie corrette dell'Early Warning EW20261119191812680.</p>
+    <p>L'advisory EW20261119191812680 del 19/11/2026 indica come versioni corrette <code>8.2.36</code>, <code>8.3.37</code>, <code>8.4.28</code> e <code>8.5.13</code>. La stessa classificazione si applica alle release patch successive della rispettiva serie (8.2, 8.3, 8.4 o 8.5). <strong>“FIXED VERSION”</strong> indica una versione pari o superiore alla soglia corretta della propria serie. Le versioni precedenti sono <strong>POTENTIALLY VULNERABLE</strong>, indipendentemente da <code>session.upload_progress.enabled</code>: il nuovo advisory non propone una mitigazione temporanea basata su quel parametro. La versione rilevata è quella CLI, salvo fallback ai binari CGI/FPM quando la CLI non è presente; il SAPI web può differire e gli aggiornamenti dei vendor possono includere backport.</p>
     <ul>
       <li><strong>NOT AFFECTED:</strong> nessuna installazione PHP rilevata.</li>
       <li><strong>NEEDS REVIEW:</strong> PHP rilevato, ma il parametro non è stato determinato.</li>
-      <li><strong>MITIGATED:</strong> PHP rilevato e parametro CLI disattivato.</li>
       <li><strong>FIXED VERSION:</strong> PHP rilevato a una versione corretta o successiva della stessa serie.</li>
-      <li><strong>POTENTIALLY VULNERABLE:</strong> PHP rilevato e parametro CLI attivo.</li>
+      <li><strong>POTENTIALLY VULNERABLE:</strong> PHP rilevato in una versione precedente alla soglia corretta della propria serie.</li>
     </ul>
     <p>Un host con solo Tomcat/Java e senza PHP non è interessato a queste vulnerabilità specifiche di PHP. La presenza di porte o file WAR non implica la presenza di PHP. Se non è possibile accedere a Docker o all'API Kubernetes, i container non ispezionati non vanno considerati “NOT AFFECTED”.</p>
     <h3>Verifica manuale</h3>
     <pre>php -v
 php --ini
-php -r 'var_export(ini_get("session.upload_progress.enabled"));'
-php-fpm -i | grep session.upload_progress.enabled
 find /usr /home /var/www /srv /opt -type f -name '*.php' 2&gt;/dev/null</pre>
     <p>Per FPM, CGI o mod_php controllare il file <code>php.ini</code> effettivamente caricato dal relativo SAPI e la configurazione del pool/web server. Consultare le advisory ufficiali PHP e gli aggiornamenti del sistema operativo per le versioni corrette.</p>
   </section>
